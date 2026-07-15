@@ -19,9 +19,9 @@ class Config:
         self.SESSION2 = getenv("SESSION2", None)
         self.SESSION3 = getenv("SESSION3", None)
 
-        self.SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/Shona_bots")
-        self.SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/shona_support")
-        self.OWNER_USERNAME = getenv("OWNER_USERNAME", "https://t.me/thecderqueen")
+        self.SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/TuneBots")
+        self.SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/betabot_support")
+        self.OWNER_USERNAME = getenv("OWNER_USERNAME", "https://t.me/ll_Alexx_lll")
 
         self.AUTO_END: bool = getenv("AUTO_END", False)
         self.AUTO_LEAVE: bool = getenv("AUTO_LEAVE", False)
@@ -32,8 +32,8 @@ class Config:
         self.PLAYLIST_LIMIT = int(getenv("PLAYLIST_LIMIT", "200"))
         self.YOUTUBE_API_KEY = getenv("YOUTUBE_API_KEY", "INFLEX86759628D")
         self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://te.legra.ph/file/3e40a408286d4eda24191.jpg")
-        self.PING_IMG = getenv("PING_IMG", "https://files.catbox.moe/haagg2.png")
-        self.START_IMG = getenv("START_IMG", "https://files.catbox.moe/zvziwk.jpg")
+        self.PING_IMG = getenv("PING_IMG", "https://n.uguu.se/nKCUOshT.jpg")
+        self.START_IMG = getenv("START_IMG", "https://d.uguu.se/nGpQVVqm.jpg")
 
     def check(self):
         missing = [
