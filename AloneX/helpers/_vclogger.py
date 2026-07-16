@@ -2,18 +2,23 @@
 # Licensed under the MIT License.
 # This file is part of AloneXMusic
 
-
 import asyncio
-
+from pyrogram import filters
+from pyrogram.types import Message
 from AloneX import app, logger
 
 DELETE_DELAY = 7
-
 
 class VCLogger:
     def __init__(self):
         self.join_count: dict[tuple, int] = {}
         self.user_cache: dict[int, tuple] = {}
+        # Un chats ki list jahan ye manually OFF kiya gaya hai (Temporary RAM storage)
+        self.disabled_chats: set[int] = set() 
+
+    # Check karne ke liye ki chat me enabled hai ya nahi
+    def is_enabled(self, chat_id: int) -> bool:
+        return chat_id not in self.disabled_chats
 
     async def _get_user_info(self, chat_id: int, user_id: int) -> tuple:
         if user_id in self.user_cache:
@@ -43,6 +48,9 @@ class VCLogger:
             pass
 
     async def notify_join(self, chat_id: int, user_id: int) -> None:
+        if not self.is_enabled(chat_id):
+            return
+
         key = (chat_id, user_id)
         self.join_count[key] = self.join_count.get(key, 0) + 1
         count = self.join_count[key]
@@ -66,6 +74,9 @@ class VCLogger:
             logger.error(f"[VCLogger] Failed to send join notice for {chat_id}: {e}")
 
     async def notify_leave(self, chat_id: int, user_id: int) -> None:
+        if not self.is_enabled(chat_id):
+            return
+
         name, username = await self._get_user_info(chat_id, user_id)
         mention = f'<a href="tg://user?id={user_id}">{name}</a>'
 
@@ -85,3 +96,27 @@ class VCLogger:
     def clear_chat(self, chat_id: int) -> None:
         for key in [k for k in self.join_count if k[0] == chat_id]:
             del self.join_count[key]
+
+# --- VC Logger Instance ---
+vc_log = VCLogger()
+
+# --- Command Handler for ON/OFF ---
+@app.on_message(filters.command(["vclog"]) & filters.group)
+async def toggle_vclog(client, message: Message):
+    if len(message.command) < 2:
+        state = "ENABLED" if vc_log.is_enabled(message.chat.id) else "DISABLED"
+        return await message.reply_text(f"Video Chat Logging is chat me **{state}** hai.\n\nChange karne ke liye use karein:\n`/vclog off` - Band karne ke liye\n`/vclog on` - Chalu karne ke liye")
+
+    cmd_arg = message.command[1].lower()
+    chat_id = message.chat.id
+
+    if cmd_arg == "off":
+        vc_log.disabled_chats.add(chat_id)
+        await message.reply_text("✅ Video Chat logging is group me **band (OFF)** kar di gayi hai.")
+    elif cmd_arg == "on":
+        if chat_id in vc_log.disabled_chats:
+            vc_log.disabled_chats.remove(chat_id)
+        await message.reply_text("✅ Video Chat logging is group me **chalu (ON)** kar di gayi hai.")
+    else:
+        await message.reply_text("❌ Galat command. Sirf `/vclog on` ya `/vclog off` use karein.")
+        
