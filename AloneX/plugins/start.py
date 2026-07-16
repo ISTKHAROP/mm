@@ -28,41 +28,44 @@ async def start(_, message: types.Message):
 
     private = message.chat.type == enums.ChatType.PRIVATE
 
-    # --- LOADING ANIMATION SEQUENCE FOR PRIVATE CHAT ---
-if private:
-    baby = await message.reply_text("**__ᴅɪηɢ ᴅᴏηɢ.🥀__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ..🥀__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ...🥀__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ....🥀__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ.....🥀__**")
-    await asyncio.sleep(0.2)
+    # --- ERROR FIX: Is poore block ko properly indent (space) kiya gaya hai ---
+    if private:
+        # --- STICKER ADDED AT THE START ---
+        await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
+        
+        baby = await message.reply_text("**__ᴅɪηɢ ᴅᴏηɢ.🥀__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ..🥀__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ...🥀__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ....🥀__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ.....🥀__**")
+        await asyncio.sleep(0.2)
 
-    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.❤️‍🔥__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ..❤️‍🔥__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ...❤️‍🔥__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ....❤️‍🔥__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.....❤️‍🔥__**")
-    await asyncio.sleep(0.2)
+        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.❤️‍🔥__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ..❤️‍🔥__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ...❤️‍🔥__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ....❤️‍🔥__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.....❤️‍🔥__**")
+        await asyncio.sleep(0.2)
 
-    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.💤__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ..💤__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ...💤__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ....💤__**")
-    await asyncio.sleep(0.2)
-    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.....💤__**")
-    await asyncio.sleep(0.3)
-    await baby.delete()
+        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.💤__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ..💤__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ...💤__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ....💤__**")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.....💤__**")
+        await asyncio.sleep(0.3)
+        await baby.delete()
 
     # --- HANDLE /start help ---
     if len(message.command) > 1 and message.command[1] == "help":
@@ -127,3 +130,4 @@ async def _new_member(_, message: types.Message):
                 return
             await utils.send_log(message, True)
             await db.add_chat(message.chat.id)
+            
