@@ -28,7 +28,7 @@ async def start(_, message: types.Message):
 
     private = message.chat.type == enums.ChatType.PRIVATE
 
-    # --- ERROR FIX: Is poore block ko properly indent (space) kiya gaya hai ---
+    # --- LOADING ANIMATION SEQUENCE FOR PRIVATE CHAT ---
     if private:
         # --- STICKER ADDED AT THE START ---
         await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
@@ -82,9 +82,9 @@ async def start(_, message: types.Message):
 
     key = buttons.start_key(message.lang, private)
     
-    # --- SEND PHOTO BELOW TEXT ---
+    # FIX: Yahan START_IMG kar diya gaya hai logs ke hisaab se
     await message.reply_photo(
-        photo=config.START_IMG_URL,
+        photo=config.START_IMG,
         caption=_text,
         reply_markup=key,
         quote=not private
