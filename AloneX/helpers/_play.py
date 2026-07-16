@@ -48,6 +48,14 @@ def checkUB(play):
 
         if chat_id not in db.active_calls:
             client = await db.get_client(chat_id)
+            
+            # --- FIX: Stop gracefully if the assistant client is dead ---
+            if not client:
+                return await m.reply_text(
+                    "**⚠️ Assistant Error:**\nThe assistant account failed to load. Your `SESSION` string has likely expired or is invalid. Please generate a new Pyrogram v2 string session and update your config variables."
+                )
+            # ------------------------------------------------------------
+            
             try:
                 member = await app.get_chat_member(chat_id, client.id)
                 if member.status in [
