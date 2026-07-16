@@ -11,20 +11,42 @@ from pyrogram import errors
 
 from AloneX import db, logger
 
+# Includes existing international languages + 22 Official Indian Languages
 lang_codes = {
+    # International Languages
     "ar": "Arabic",
     "de": "German",
     "en": "English",
     "es": "Spanish",
     "fr": "French",
-    "hi": "Hindi",
     "ja": "Japanese",
-    "my": "Burmese",
-    "pa": "Punjabi",
     "pt": "Portuguese",
     "ru": "Russian",
     "zh": "Chinese",
-    "mm": "Burmese",
+    
+    # 22 Official Indian Languages (Eighth Schedule)
+    "as": "Assamese",
+    "bn": "Bengali",
+    "brx": "Bodo",
+    "doi": "Dogri",
+    "gu": "Gujarati",
+    "hi": "Hindi",
+    "kn": "Kannada",
+    "kok": "Konkani",
+    "ks": "Kashmiri",
+    "mai": "Maithili",
+    "ml": "Malayalam",
+    "mni": "Manipuri",
+    "mr": "Marathi",
+    "ne": "Nepali",
+    "or": "Odia",
+    "pa": "Punjabi",
+    "sa": "Sanskrit",
+    "sat": "Santali",
+    "sd": "Sindhi",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "ur": "Urdu"
 }
 
 
@@ -49,11 +71,11 @@ class Language:
 
     async def get_lang(self, chat_id: int) -> dict:
         lang_code = await db.get_lang(chat_id)
-        return self.languages[lang_code]
+        return self.languages.get(lang_code, self.languages.get("en", {}))
 
     def get_languages(self) -> dict:
         files = {f.stem for f in self.lang_dir.glob("*.json")}
-        return {code: self.lang_codes[code] for code in sorted(files)}
+        return {code: self.lang_codes[code] for code in sorted(files) if code in self.lang_codes}
 
     def language(self):
         def decorator(func):
@@ -68,7 +90,7 @@ class Language:
                     None,
                 )
 
-                if not fallen.from_user:
+                if not fallen or not fallen.from_user:
                     return
 
                 if hasattr(fallen, "chat"):
@@ -81,7 +103,7 @@ class Language:
                     return await chat.leave()
 
                 lang_code = await db.get_lang(chat.id)
-                lang_dict = self.languages[lang_code]
+                lang_dict = self.languages.get(lang_code, self.languages.get("en", {}))
 
                 setattr(fallen, "lang", lang_dict)
                 try:
