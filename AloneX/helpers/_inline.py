@@ -122,7 +122,6 @@ class Inline:
             keyboard.append(
                 [
                     self.ikb(text="≪ -20s", callback_data=f"controls seek_back {chat_id}", style=seek_styles[0]),
-                    self.ikb(text="⥁", callback_data=f"controls replay {chat_id}", style=seek_styles[1]),
                     self.ikb(text="+20s ≫", callback_data=f"controls seek_fwd {chat_id}", style=seek_styles[2]),
                 ]
             )
@@ -278,7 +277,7 @@ class Inline:
                     self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL, style=ButtonStyle.SUCCESS),
                     self.ikb(
                         text=lang["source"],
-                        url="https://github.com/TeamShonax/ShonaX", style=ButtonStyle.SUCCESS
+                        url="https://github.com/TEAM-ISTKHAR/IstkharMusic", style=ButtonStyle.SUCCESS
                     ),
                 ]
             ]
