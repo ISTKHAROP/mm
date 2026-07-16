@@ -1,7 +1,7 @@
-# Copyright (c) 2025 TheHamkerAlone
+# Copyright (c) 2026 THE SHIV
 # Licensed under the MIT License.
-# This file is part of AloneXMusic
-#ALONE-CODER
+# This file is part of MahiMusic
+# DEVELOPER - THE SHIV
 
 import asyncio
 from pyrogram import enums, filters, types
@@ -26,10 +26,51 @@ async def start(_, message: types.Message):
     if message.from_user.id in app.bl_users and message.from_user.id not in db.notified:
         return await message.reply_text(message.lang["bl_user_notify"])
 
+    private = message.chat.type == enums.ChatType.PRIVATE
+
+    # --- LOADING ANIMATION SEQUENCE FOR PRIVATE CHAT ---
+if private:
+    baby = await message.reply_text("**__ᴅɪηɢ ᴅᴏηɢ.🥀__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ..🥀__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ...🥀__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ....🥀__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ.....🥀__**")
+    await asyncio.sleep(0.2)
+
+    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.❤️‍🔥__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ..❤️‍🔥__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ...❤️‍🔥__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ....❤️‍🔥__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.....❤️‍🔥__**")
+    await asyncio.sleep(0.2)
+
+    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.💤__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ..💤__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ...💤__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ....💤__**")
+    await asyncio.sleep(0.2)
+    await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.....💤__**")
+    await asyncio.sleep(0.3)
+    await baby.delete()
+
+    # --- HANDLE /start help ---
     if len(message.command) > 1 and message.command[1] == "help":
+        if private:
+            # Sticker Before Video in /start help
+            await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
         return await _help(_, message)
 
-    private = message.chat.type == enums.ChatType.PRIVATE
     _text = (
         message.lang["start_pm"].format(message.from_user.first_name, app.name)
         if private
@@ -37,11 +78,13 @@ async def start(_, message: types.Message):
     )
 
     key = buttons.start_key(message.lang, private)
-    await message.reply_photo(
-        photo=config.START_IMG,
+    
+    # --- SEND VIDEO BELOW TEXT ---
+    await message.reply_video(
+        video=config.START_VIDEO,  # Make sure START_VIDEO is defined in your config.py
         caption=_text,
         reply_markup=key,
-        quote=not private,
+        quote=not private
     )
 
     if private:
