@@ -33,44 +33,44 @@ async def start(_, message: types.Message):
         # --- STICKER ADDED AT THE START ---
         await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
         
-        baby = await message.reply_text("**__ᴅɪηɢ ᴅᴏηɢ.🥀__**")
+        baby = await message.reply_text("ᴅɪηɢ ᴅᴏηɢ.🥀")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ..🥀__**")
+        await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ..🥀")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ...🥀__**")
+        await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ...🥀")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ....🥀__**")
+        await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ....🥀")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ᴅɪηɢ ᴅᴏηɢ.....🥀__**")
-        await asyncio.sleep(0.2)
-
-        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.❤️‍🔥__**")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ..❤️‍🔥__**")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ...❤️‍🔥__**")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ....❤️‍🔥__**")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("**__sᴛᴧʀᴛɪηɢ.....❤️‍🔥__**")
+        await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ.....🥀")
         await asyncio.sleep(0.2)
 
-        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.💤__**")
+        await baby.edit_text("sᴛᴧʀᴛɪηɢ.❤️‍🔥")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ..💤__**")
+        await baby.edit_text("sᴛᴧʀᴛɪηɢ..❤️‍🔥")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ...💤__**")
+        await baby.edit_text("sᴛᴧʀᴛɪηɢ...❤️‍🔥")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ....💤__**")
+        await baby.edit_text("sᴛᴧʀᴛɪηɢ....❤️‍🔥")
         await asyncio.sleep(0.2)
-        await baby.edit_text("**__ʙσᴛ sᴛᴧʀᴛєᴅ.....💤__**")
+        await baby.edit_text("sᴛᴧʀᴛɪηɢ.....❤️‍🔥")
+        await asyncio.sleep(0.2)
+
+        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ.💤")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ..💤")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ...💤")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ....💤")
+        await asyncio.sleep(0.2)
+        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ.....💤")
         await asyncio.sleep(0.3)
         await baby.delete()
 
     # --- HANDLE /start help ---
     if len(message.command) > 1 and message.command[1] == "help":
         if private:
-            # Sticker Before Video in /start help
+            # Sticker Before Image in /start help
             await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
         return await _help(_, message)
 
@@ -82,9 +82,9 @@ async def start(_, message: types.Message):
 
     key = buttons.start_key(message.lang, private)
     
-    # --- SEND VIDEO BELOW TEXT ---
-    await message.reply_video(
-        video=config.START_VIDEO,  # Make sure START_VIDEO is defined in your config.py
+    # --- SEND PHOTO BELOW TEXT ---
+    await message.reply_photo(
+        photo=config.START_IMG_URL,
         caption=_text,
         reply_markup=key,
         quote=not private
