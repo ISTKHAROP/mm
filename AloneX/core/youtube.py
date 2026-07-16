@@ -5,7 +5,9 @@ import aiohttp
 import yt_dlp
 from py_yt import VideosSearch, Playlist
 from AloneX import logger, config
-from AloneX.helpers import Track, utils
+
+# ERROR FIX: Yahan se 'from AloneX.helpers import Track, utils' hata diya gaya hai 
+# taaki circular import ka loop na bane.
 
 API_URL = "https://teaminflex.xyz"
 DOWNLOAD_DIR = "downloads"
@@ -25,7 +27,10 @@ class YouTube:
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
 
-    async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
+    async def search(self, query: str, m_id: int, video: bool = False):
+        # ERROR FIX: Local import use kiya gaya hai
+        from AloneX.helpers import Track, utils 
+        
         try:
             _search = VideosSearch(query, limit=1)
             results = await _search.next()
@@ -47,7 +52,10 @@ class YouTube:
             logger.error(f"Search error: {e}")
         return None
 
-    async def playlist(self, limit: int, user: str, url: str, video: bool) -> list[Track]:
+    async def playlist(self, limit: int, user: str, url: str, video: bool):
+        # ERROR FIX: Local import use kiya gaya hai
+        from AloneX.helpers import Track, utils
+        
         tracks = []
         try:
             plist = await Playlist.get(url)
@@ -242,9 +250,10 @@ class YouTube:
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
-    async def _related_from_mix(
-        self, video_id: str, played: set[str]
-    ) -> Track | None:
+    async def _related_from_mix(self, video_id: str, played: set[str]):
+        # ERROR FIX: Local import use kiya gaya hai
+        from AloneX.helpers import Track
+        
         loop = asyncio.get_event_loop()
         try:
             info = await asyncio.wait_for(
@@ -292,12 +301,10 @@ class YouTube:
 
         return None
 
-    async def _related_from_search(
-        self, current: Track, played: set[str]
-    ) -> Track | None:
-        """Fallback used when YouTube blocks the mix-playlist scrape (common on
-        server/cloud IPs). Reuses the same search backend that
-        already powers /play, so it works wherever normal search works."""
+    async def _related_from_search(self, current, played: set[str]):
+        # ERROR FIX: Local import use kiya gaya hai
+        from AloneX.helpers import Track, utils
+        
         queries = []
         if current.channel_name:
             queries.append(f"{current.channel_name}")
@@ -336,13 +343,7 @@ class YouTube:
 
         return None
 
-    async def get_related(
-        self, current: Track, played: list[str] | None = None
-    ) -> Track | None:
-        """Fetch the next autoplay track, skipping anything already played in
-        this session. Tries YouTube's related mix first, falling back to a
-        text search (same backend as /play) if the mix is blocked or empty —
-        this is common on server/cloud IPs."""
+    async def get_related(self, current, played: list[str] | None = None):
         if not current or not current.id:
             return None
 
@@ -362,3 +363,4 @@ class YouTube:
 
         logger.warning(f"[Autoplay] No related track found for {current.id}.")
         return None
+                                
