@@ -50,11 +50,13 @@ async def stylish_progress_bar(current, total, msg, start_time, command_start_ti
     filled = int(percentage / 10)
     empty = 10 - filled
     bar = "●" * filled + "○" * empty
-text = f"**{MSG_DOWNLOADING}**\n\n"
-text += f"**⚡ 𝐏ʀᴏɢʀᴇss:** `[{bar}] {round(percentage, 2)}%`\n"
-text += f"**📥 𝐒ɪᴢᴇ:** `{downloaded} MB / {total_size} MB`\n"
-text += f"**🚀 𝐒ᴘᴇᴇᴅ:** `{speed} MB/s`\n"
-text += f"**⏳ 𝐄𝐓ᴧ:** `{eta} sec`\n"
+    
+    # ERROR FIX: Yahan se indentation theek kar di gayi hai
+    text = f"**{MSG_DOWNLOADING}**\n\n"
+    text += f"**⚡ 𝐏ʀᴏɢʀᴇss:** `[{bar}] {round(percentage, 2)}%`\n"
+    text += f"**📥 𝐒ɪᴢᴇ:** `{downloaded} MB / {total_size} MB`\n"
+    text += f"**🚀 𝐒ᴘᴇᴇᴅ:** `{speed} MB/s`\n"
+    text += f"**⏳ 𝐄𝐓ᴧ:** `{eta} sec`\n"
     
     try:
         await msg.edit_text(text)
@@ -301,4 +303,4 @@ async def play_hndlr(
     await app.send_message(
         chat_id=m.chat.id,
         text=m.lang["playlist_queued"].format(len(tracks)) + added,
-        )
+)
