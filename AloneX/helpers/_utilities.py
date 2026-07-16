@@ -1,7 +1,7 @@
-# Copyright (c) 2025 TheHamkerAlone
+# Copyright (c) 2026 THE SHIV
 # Licensed under the MIT License.
-# This file is part of AloneXMusic
-#ALONE-CODER
+# This file is part of MahiMusic
+# DEVELOPER - THE SHIV
 
 import re
 
@@ -37,7 +37,6 @@ class Utilities:
         parts = [int(p) for p in time.strip().split(":")]
         return sum(value * 60**i for i, value in enumerate(reversed(parts)))
 
-
     def get_url(self, message_1: types.Message) -> str | None:
         link = None
         messages = [message_1]
@@ -63,7 +62,6 @@ class Utilities:
             return link.split("&si")[0].split("?si")[0]
         return None
 
-
     async def extract_user(self, msg: types.Message) -> types.User | None:
         if msg.reply_to_message:
             return msg.reply_to_message.from_user
@@ -84,6 +82,14 @@ class Utilities:
 
         return None
 
+    async def get_owner(self, chat_id: int) -> str:
+        try:
+            async for member in app.get_chat_members(chat_id, filter=enums.ChatMembersFilter.ADMINISTRATORS):
+                if member.status == enums.ChatMemberStatus.OWNER:
+                    return member.user.mention
+        except:
+            pass
+        return "Unknown"
 
     async def play_log(
         self,
@@ -93,36 +99,71 @@ class Utilities:
     ) -> None:
         if m.chat.id == app.logger:
             return
-        _text = m.lang["play_log"].format(
-            app.name,
-            m.chat.id,
-            m.chat.title,
-            m.from_user.id,
-            m.from_user.mention,
-            m.link,
-            title,
-            duration,
+            
+        log_text = (
+            "<blockquote><b>🎵 ɴᴇᴡ ᴍᴇᴅɪᴀ ᴘʟᴀʏᴇᴅ</b>\n\n"
+            f"<b>🥀 ᴄʜᴀᴛ :</b> {m.chat.title} [<code>{m.chat.id}</code>]\n"
+            f"<b>👤 ᴜsᴇʀ :</b> {m.from_user.mention} [<code>{m.from_user.id}</code>]\n"
+            f"<b>📝 ᴛɪᴛʟᴇ :</b> <a href='{m.link}'>{title}</a>\n"
+            f"<b>⏳ ᴅᴜʀᴀᴛɪᴏɴ :</b> {duration}</blockquote>"
         )
-        await app.send_message(chat_id=app.logger, text=_text)
+        
+        await app.send_message(
+            chat_id=app.logger, 
+            text=log_text,
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
+        )
 
-    async def send_log(self, m: types.Message, chat: bool = False) -> None:
+    async def send_log(self, m: types.Message, chat: bool = False, action: str = "added") -> None:
         if chat:
             user = m.from_user
-            return await app.send_message(
+            chat_id = m.chat.id
+            
+            try:
+                members_count = await app.get_chat_members_count(chat_id)
+            except:
+                members_count = "Unknown"
+                
+            owner = await self.get_owner(chat_id)
+            log_image = "https://n.uguu.se/nKCUOshT.jpg"
+
+            if action == "added":
+                log_text = (
+                    "<blockquote><b>✅ ʙᴏᴛ ᴀᴅᴅᴇᴅ ᴛᴏ ɢʀᴏᴜᴘ</b>\n\n"
+                    f"<b>🥀 ᴄʜᴀᴛ ɴᴀᴍᴇ :</b> {m.chat.title}\n"
+                    f"<b>🍂 ᴄʜᴀᴛ ɪᴅ :</b> <code>{chat_id}</code>\n"
+                    f"<b>👤 ᴀᴅᴅᴇᴅ ʙʏ :</b> {user.mention if user else 'Anonymous'}\n"
+                    f"<b>👑 ᴏᴡɴᴇʀ :</b> {owner}\n"
+                    f"<b>👥 ᴛᴏᴛᴀʟ ᴜsᴇʀs :</b> {members_count}</blockquote>"
+                )
+            else:
+                log_text = (
+                    "<blockquote><b>❌ ʙᴏᴛ ʀᴇᴍᴏᴠᴇᴅ ꜰʀᴏᴍ ɢʀᴏᴜᴘ</b>\n\n"
+                    f"<b>🥀 ᴄʜᴀᴛ ɴᴀᴍᴇ :</b> {m.chat.title}\n"
+                    f"<b>🍂 ᴄʜᴀᴛ ɪᴅ :</b> <code>{chat_id}</code>\n"
+                    f"<b>👤 ʀᴇᴍᴏᴠᴇᴅ ʙʏ :</b> {user.mention if user else 'Anonymous'}\n"
+                    f"<b>👑 ᴏᴡɴᴇʀ :</b> {owner}\n"
+                    f"<b>👥 ᴛᴏᴛᴀʟ ᴜsᴇʀs :</b> {members_count}</blockquote>"
+                )
+
+            await app.send_photo(
                 chat_id=app.logger,
-                text=m.lang["log_chat"].format(
-                    m.chat.id,
-                    m.chat.title,
-                    user.id if user else 0,
-                    user.mention if user else "AloneXmous",
-                ),
+                photo=log_image,
+                caption=log_text,
+                parse_mode=enums.ParseMode.HTML
+            )
+            
+        else:
+            log_text = (
+                "<blockquote><b>👤 ɴᴇᴡ ᴜsᴇʀ sᴛᴀʀᴛᴇᴅ</b>\n\n"
+                f"<b>🥀 ɴᴀᴍᴇ :</b> {m.from_user.mention}\n"
+                f"<b>🍂 ɪᴅ :</b> <code>{m.from_user.id}</code>\n"
+                f"<b>🔗 ᴜsᴇʀɴᴀᴍᴇ :</b> @{m.from_user.username or 'None'}</blockquote>"
             )
 
-        await app.send_message(
-            chat_id=app.logger,
-            text=m.lang["log_user"].format(
-                m.from_user.id,
-                f"@{m.from_user.username}",
-                m.from_user.mention,
-            ),
-        )
+            await app.send_message(
+                chat_id=app.logger,
+                text=log_text,
+                parse_mode=enums.ParseMode.HTML
+            )
