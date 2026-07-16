@@ -6,7 +6,7 @@
 import re
 import asyncio
 
-from pyrogram import filters, types
+from pyrogram import enums, filters, types  # <-- ADDED enums HERE
 
 from AloneX import anon, app, db, lang, queue, tg, yt
 from AloneX.helpers import admin_check, buttons, can_manage_vc
@@ -129,9 +129,16 @@ async def _controls(_, query: types.CallbackQuery):
         sent = await app.send_message(chat_id=chat_id, text=query.lang["play_seeking"])
         await anon.play_media(chat_id, sent, media, start_from)
         media.time = start_from
-        return await sent.edit_text(
-            query.lang["play_seeked"].format(stype, start_from, user)
-        )
+        
+        # --- FIX: Safe editing for Photos/Text ---
+        if sent.photo or sent.video or sent.animation:
+            return await sent.edit_caption(
+                query.lang["play_seeked"].format(stype, start_from, user)
+            )
+        else:
+            return await sent.edit_text(
+                query.lang["play_seeked"].format(stype, start_from, user)
+            )
 
     elif action == "stop":
         await anon.stop(chat_id)
@@ -143,10 +150,12 @@ async def _controls(_, query: types.CallbackQuery):
             await query.message.reply_text(reply, quote=False)
             await query.message.delete()
         else:
+            # --- FIX: Safely parse text or caption for Media Files ---
+            original_text = query.message.caption.html if query.message.caption else query.message.text.html
             mtext = re.sub(
                 r"\n\n<blockquote>.*?</blockquote>",
                 "",
-                query.message.caption.html or query.message.text.html,
+                original_text,
                 flags=re.DOTALL,
             )
             keyboard = buttons.controls(
@@ -155,9 +164,12 @@ async def _controls(_, query: types.CallbackQuery):
                 _lang=query.lang,
                 autoplay_on=await db.get_autoplay(chat_id),
             )
-        await query.edit_message_text(
-            f"{mtext}\n\n<blockquote>{reply}</blockquote>", reply_markup=keyboard
-        )
+            
+            final_text = f"{mtext}\n\n<blockquote>{reply}</blockquote>"
+            if query.message.photo or query.message.video or query.message.animation:
+                await query.edit_message_caption(caption=final_text, reply_markup=keyboard)
+            else:
+                await query.edit_message_text(text=final_text, reply_markup=keyboard)
     except:
         pass
 
@@ -166,26 +178,46 @@ async def _controls(_, query: types.CallbackQuery):
 @lang.language()
 async def _help(_, query: types.CallbackQuery):
     data = query.data.split()
+    is_private = query.message.chat.type == enums.ChatType.PRIVATE
+    has_media = bool(query.message.photo or query.message.video or query.message.animation)
+
+    # --- FIX: Unified function to smoothly edit message or photo caption in same chat ---
+    async def edit_ui(new_text, new_markup):
+        try:
+            if has_media:
+                await query.edit_message_caption(caption=new_text, reply_markup=new_markup)
+            else:
+                await query.edit_message_text(text=new_text, reply_markup=new_markup)
+        except Exception:
+            pass
+
     if len(data) == 1:
-        return await query.answer(url=f"https://t.me/{app.username}?start=help")
+        if not is_private:
+            return await query.answer(url=f"https://t.me/{app.username}?start=help")
+        # Edit dynamically in PM
+        return await edit_ui(query.lang["help_menu"], buttons.help_markup(query.lang))
 
     if data[1] == "back":
-        return await query.edit_message_text(
-            text=query.lang["help_menu"], reply_markup=buttons.help_markup(query.lang)
-        )
+        return await edit_ui(query.lang["help_menu"], buttons.help_markup(query.lang))
+        
     elif data[1] == "home":
-        return await query.answer(url=f"https://t.me/{app.username}?start=home")
+        if not is_private:
+            return await query.answer(url=f"https://t.me/{app.username}?start=home")
+        
+        # Load Start Message Text
+        _text = query.lang["start_pm"].format(query.from_user.first_name, app.name)
+        key = buttons.start_key(query.lang, True)
+        return await edit_ui(_text, key)
+        
     elif data[1] == "close":
         try:
             await query.message.delete()
             return await query.message.reply_to_message.delete()
         except:
-            pass
+            return
 
-    await query.edit_message_text(
-        text=query.lang[f"help_{data[1]}"],
-        reply_markup=buttons.help_markup(query.lang, True),
-    )
+    # Specific Help categories
+    await edit_ui(query.lang[f"help_{data[1]}"], buttons.help_markup(query.lang, True))
 
 
 @app.on_callback_query(filters.regex("settings") & ~app.bl_users)
@@ -208,15 +240,28 @@ async def _settings_cb(_, query: types.CallbackQuery):
     elif cmd[1] == "play":
         await db.set_play_mode(chat_id, _admin)
         _admin = not _admin
-    await query.edit_message_reply_markup(
-        reply_markup=buttons.settings_markup(
-            query.lang,
-            _admin,
-            _delete,
-            _language,
-            chat_id,
+    
+    # Check if message is media to avoid crashes
+    if query.message.photo or query.message.video or query.message.animation:
+        await query.edit_message_reply_markup(
+            reply_markup=buttons.settings_markup(
+                query.lang,
+                _admin,
+                _delete,
+                _language,
+                chat_id,
+            )
         )
-    )
+    else:
+        await query.edit_message_reply_markup(
+            reply_markup=buttons.settings_markup(
+                query.lang,
+                _admin,
+                _delete,
+                _language,
+                chat_id,
+            )
+        )
 
 
 async def _delete_later(message: types.Message) -> None:
@@ -233,33 +278,38 @@ async def _autoplay_panel(_, query: types.CallbackQuery):
     data = query.data.split()
     action = data[1] if len(data) > 1 else None
     chat_id = query.message.chat.id
+    has_media = bool(query.message.photo or query.message.video or query.message.animation)
 
     if action == "info":
         await query.answer()
-        return await query.edit_message_text(
-            text=query.lang.get(
-                "autoplay_info_title",
-                "ℹ️ <b>How Autoplay works?</b>\n\n"
-                "• Automatically continues music playback.\n"
-                "• Follows current audio or video mode.\n"
-                "• Designed for seamless listening.\n\n"
-                "🎶 Sit back & enjoy the music.",
-            ),
-            reply_markup=buttons.autoplay_info_markup(query.lang),
+        text = query.lang.get(
+            "autoplay_info_title",
+            "ℹ️ <b>How Autoplay works?</b>\n\n"
+            "• Automatically continues music playback.\n"
+            "• Follows current audio or video mode.\n"
+            "• Designed for seamless listening.\n\n"
+            "🎶 Sit back & enjoy the music.",
         )
+        markup = buttons.autoplay_info_markup(query.lang)
+        if has_media:
+            return await query.edit_message_caption(caption=text, reply_markup=markup)
+        else:
+            return await query.edit_message_text(text=text, reply_markup=markup)
 
     elif action == "back":
         await query.answer()
-        return await query.edit_message_text(
-            text=query.lang.get(
-                "autoplay_panel_title",
-                "🎶 <b>Autoplay:</b>\n\n"
-                "• Keeps music playing automatically.\n"
-                "• Ensures smooth and uninterrupted listening.\n"
-                "• Designed for a seamless music experience.",
-            ),
-            reply_markup=buttons.autoplay_markup(query.lang),
+        text = query.lang.get(
+            "autoplay_panel_title",
+            "🎶 <b>Autoplay:</b>\n\n"
+            "• Keeps music playing automatically.\n"
+            "• Ensures smooth and uninterrupted listening.\n"
+            "• Designed for a seamless music experience.",
         )
+        markup = buttons.autoplay_markup(query.lang)
+        if has_media:
+            return await query.edit_message_caption(caption=text, reply_markup=markup)
+        else:
+            return await query.edit_message_text(text=text, reply_markup=markup)
 
     elif action == "close":
         await query.answer()
@@ -284,3 +334,4 @@ async def _autoplay_panel(_, query: types.CallbackQuery):
         )
         asyncio.create_task(_delete_later(msg))
         return
+            
