@@ -1,383 +1,364 @@
 import os
-import math
+import re
+import asyncio
 import aiohttp
+import yt_dlp
+from py_yt import VideosSearch, Playlist
+from AloneX import logger, config
+from AloneX.helpers import Track, utils
 
-from PIL import (
-Image,
-ImageDraw,
-ImageEnhance,
-ImageFilter,
-ImageFont,
-)
+API_URL = "https://teaminflex.xyz"
+DOWNLOAD_DIR = "downloads"
 
-from AloneX import config
-from AloneX.helpers import Track
 
-class Thumbnail:
-def init(self):
-self.width = 1280
-self.height = 720
+class YouTube:
+    def __init__(self):
+        self.base = "https://www.youtube.com/watch?v="
+        self.regex = re.compile(
+            r"(https?://)?(www\.|m\.|music\.)?"
+            r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
+            r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
+        )
 
-self.album_size = 520  
-    self.radius = 36  
+    # ---------------- basic helpers ----------------
 
-    self.font_title = ImageFont.truetype(  
-        "AloneX/helpers/Raleway-Bold.ttf",  
-        36,  
-    )  
+    def valid(self, url: str) -> bool:
+        return bool(re.match(self.regex, url))
 
-    self.font_artist = ImageFont.truetype(  
-        "AloneX/helpers/Inter-Light.ttf",  
-        26,  
-    )  
+    async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
+        try:
+            _search = VideosSearch(query, limit=1)
+            results = await _search.next()
+            if results and results["result"]:
+                data = results["result"][0]
+                return Track(
+                    id=data.get("id"),
+                    channel_name=data.get("channel", {}).get("name"),
+                    duration=data.get("duration"),
+                    duration_sec=utils.to_seconds(data.get("duration")) if data.get("duration") else 0,
+                    message_id=m_id,
+                    title=data.get("title")[:25],
+                    thumbnail=data.get("thumbnails", [{}])[-1].get("url").split("?")[0],
+                    url=data.get("link"),
+                    view_count=data.get("viewCount", {}).get("short"),
+                    video=video,
+                )
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+        return None
 
-    self.font_small = ImageFont.truetype(  
-        "AloneX/helpers/Inter-Light.ttf",  
-        22,  
-    )  
+    async def playlist(self, limit: int, user: str, url: str, video: bool) -> list[Track]:
+        tracks = []
+        try:
+            plist = await Playlist.get(url)
+            for data in plist.get("videos", [])[:limit]:
+                track = Track(
+                    id=data.get("id"),
+                    channel_name=data.get("channel", {}).get("name", ""),
+                    duration=data.get("duration"),
+                    duration_sec=utils.to_seconds(data.get("duration")) if data.get("duration") else 0,
+                    title=data.get("title")[:25],
+                    thumbnail=data.get("thumbnails", [{}])[-1].get("url").split("?")[0],
+                    url=data.get("link").split("&list=")[0],
+                    user=user,
+                    view_count="",
+                    video=video,
+                )
+                tracks.append(track)
+        except Exception as e:
+            logger.error(f"Playlist error: {e}")
+        return tracks
 
-# ---------------- basic helpers ----------------  
+    # ---------------- download (teaminflex.xyz API) ----------------
 
-async def save_thumb(  
-    self,  
-    output_path: str,  
-    url: str,  
-) -> str:  
-    async with aiohttp.ClientSession() as session:  
-        async with session.get(url) as resp:  
-            open(output_path, "wb").write(  
-                await resp.read()  
-            )  
-    return output_path  
+    async def download(self, video_id: str, video: bool = False) -> str | None:
+        if not video_id or len(video_id) < 3:
+            return None
 
-def trim_text(  
-    self,  
-    text,  
-    font,  
-    max_width,  
-):  
-    if font.getlength(text) <= max_width:  
-        return text  
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        ext = "mkv" if video else "webm"
+        file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
 
-    dots = "..."  
+        if os.path.exists(file_path):
+            return file_path
 
-    for i in range(len(text), 0, -1):  
-        temp = text[:i] + dots  
+        max_retries = 3
+        retry_delay = 1  # seconds, flat delay — keep response fast
+        transient_statuses = {502, 503, 504}
 
-        if font.getlength(temp) <= max_width:  
-            return temp  
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=60)
+                ) as session:
+                    payload = {"url": video_id, "type": "video" if video else "audio"}
+                    headers = {
+                        "Content-Type": "application/json",
+                        "X-API-KEY": config.YOUTUBE_API_KEY
+                    }
 
-    return dots  
+                    # Step 1: Trigger API
+                    async with session.post(f"{API_URL}/download", json=payload, headers=headers) as response:
+                        if response.status == 401:
+                            logger.error("[API] Invalid API key")
+                            return None
 
-# ---------------- icon drawing helpers ----------------  
+                        if response.status in transient_statuses:
+                            logger.warning(
+                                f"[API] returned {response.status} (attempt {attempt}/{max_retries}) for {video_id}"
+                            )
+                            if attempt < max_retries:
+                                await asyncio.sleep(retry_delay)
+                                continue
+                            logger.error(f"[API] gave up after {max_retries} attempts for {video_id}")
+                            return None
 
-def draw_icon_bg(self, draw, center, radius, fill=(255, 255, 255, 60)):  
-    x, y = center  
-    draw.ellipse(  
-        [x - radius, y - radius, x + radius, y + radius],  
-        fill=fill,  
-    )  
+                        if response.status != 200:
+                            logger.error(f"[API] returned {response.status}")
+                            return None
 
-def draw_star(self, draw, center, size, color=(255, 255, 255, 255)):  
-    x, y = center  
-    points = []  
-    for i in range(10):  
-        angle = math.pi / 2 + i * math.pi / 5  
-        r = size if i % 2 == 0 else size * 0.42  
-        points.append(  
-            (x + r * math.cos(angle), y - r * math.sin(angle))  
-        )  
-    draw.polygon(points, outline=color, width=2)  
+                        try:
+                            data = await response.json()
+                        except Exception as e:
+                            logger.warning(
+                                f"[API] invalid JSON response (attempt {attempt}/{max_retries}) for {video_id}: {e}"
+                            )
+                            if attempt < max_retries:
+                                await asyncio.sleep(retry_delay)
+                                continue
+                            logger.error(f"[API] gave up after {max_retries} attempts for {video_id}")
+                            return None
 
-def draw_dots_menu(self, draw, center, size, color=(120, 120, 120, 255)):  
-    x, y = center  
-    r = size * 0.11  
-    for i in (-1, 0, 1):  
-        cy = y + i * size * 0.34  
-        draw.ellipse([x - r, cy - r, x + r, cy + r], fill=color)  
+                        if data.get("status") != "success" or not data.get("download_url"):
+                            logger.error(f"[API] response error: {data}")
+                            if attempt < max_retries:
+                                await asyncio.sleep(retry_delay)
+                                continue
+                            return None
 
-def draw_circle_button(self, draw, center, radius, filled=True):  
-    x, y = center  
-    bbox = [x - radius, y - radius, x + radius, y + radius]  
-    if filled:  
-        draw.ellipse(bbox, fill=(255, 255, 255, 255))  
-    else:  
-        draw.ellipse(bbox, outline=(255, 255, 255, 180), width=3)  
+                        download_link = f"{API_URL}{data['download_url']}"
 
-def draw_pause_bars(self, draw, center, size, color=(35, 25, 20, 255)):  
-    x, y = center  
-    bar_w = size * 0.17  
-    bar_h = size * 0.9  
-    gap = size * 0.20  
-    draw.rounded_rectangle(  
-        [x - gap - bar_w / 2, y - bar_h / 2, x - gap + bar_w / 2, y + bar_h / 2],  
-        radius=2,  
-        fill=color,  
-    )  
-    draw.rounded_rectangle(  
-        [x + gap - bar_w / 2, y - bar_h / 2, x + gap + bar_w / 2, y + bar_h / 2],  
-        radius=2,  
-        fill=color,  
-    )  
+                    # Step 2: Download file
+                    async with session.get(download_link) as file_response:
+                        if file_response.status in transient_statuses:
+                            logger.warning(
+                                f"[API] file download returned {file_response.status} (attempt {attempt}/{max_retries}) for {video_id}"
+                            )
+                            if attempt < max_retries:
+                                await asyncio.sleep(retry_delay)
+                                continue
+                            logger.error(f"[API] gave up after {max_retries} attempts for {video_id}")
+                            return None
 
-def draw_skip_icon(self, draw, center, size, forward=True, color=(255, 255, 255, 255)):  
-    x, y = center  
-    tri_w = size * 0.44  
-    tri_h = size * 0.95  
-    gap = size * 0.26  
-    for dx in (-gap, gap):  
-        cx = x + dx  
-        if forward:  
-            pts = [  
-                (cx - tri_w / 2, y - tri_h / 2),  
-                (cx - tri_w / 2, y + tri_h / 2),  
-                (cx + tri_w / 2, y),  
-            ]  
-        else:  
-            pts = [  
-                (cx + tri_w / 2, y - tri_h / 2),  
-                (cx + tri_w / 2, y + tri_h / 2),  
-                (cx - tri_w / 2, y),  
-            ]  
-        draw.polygon(pts, fill=color)  
+                        if file_response.status != 200:
+                            logger.error(f"[API] Download failed ({file_response.status})")
+                            if attempt < max_retries:
+                                await asyncio.sleep(retry_delay)
+                                continue
+                            return None
 
-def draw_speaker(self, draw, pos, size, color=(255, 255, 255, 255), loud=True):  
-    x, y = pos  
-    body_w = size * 0.36  
-    body_h = size * 0.5  
-    draw.polygon(  
-        [  
-            (x, y - body_h * 0.22),  
-            (x + body_w * 0.42, y - body_h * 0.22),  
-            (x + body_w, y - body_h / 2),  
-            (x + body_w, y + body_h / 2),  
-            (x + body_w * 0.42, y + body_h * 0.22),  
-            (x, y + body_h * 0.22),  
-        ],  
-        fill=color,  
-    )  
-    if loud:  
-        draw.arc(  
-            [x + body_w - 2, y - size * 0.38, x + body_w + size * 0.38, y + size * 0.38],  
-            -55, 55, fill=color, width=3,  
-        )  
-        draw.arc(  
-            [x + body_w - 2, y - size * 0.22, x + body_w + size * 0.22, y + size * 0.22],  
-            -55, 55, fill=color, width=3,  
-        )  
+                        with open(file_path, "wb") as f:
+                            async for chunk in file_response.content.iter_chunked(8192):
+                                f.write(chunk)
 
-def draw_quote_bubble(self, draw, center, size, color=(255, 255, 255, 255)):  
-    x, y = center  
-    top = y - size * 0.42  
-    bottom = y + size * 0.10  
-    draw.rounded_rectangle(  
-        [x - size / 2, top, x + size / 2, bottom],  
-        radius=size * 0.22,  
-        outline=color,  
-        width=3,  
-    )  
-    draw.polygon(  
-        [  
-            (x - size * 0.14, bottom - 2),  
-            (x - size * 0.14, bottom + size * 0.24),  
-            (x + size * 0.12, bottom - 2),  
-        ],  
-        fill=color,  
-    )  
-    qh = size * 0.16  
-    qw = size * 0.09  
-    cy = (top + bottom) / 2 - 2  
-    draw.rounded_rectangle(  
-        [x - size * 0.20, cy - qh / 2, x - size * 0.20 + qw, cy + qh / 2],  
-        radius=2, fill=color,  
-    )  
-    draw.rounded_rectangle(  
-        [x + size * 0.06, cy - qh / 2, x + size * 0.06 + qw, cy + qh / 2],  
-        radius=2, fill=color,  
-    )  
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    return file_path
 
-def draw_list_icon(self, draw, center, size, color=(255, 255, 255, 255)):  
-    x, y = center  
-    line_w = size * 0.62  
-    for dy in (-size * 0.28, 0, size * 0.28):  
-        r = size * 0.05  
-        draw.ellipse(  
-            [x - line_w / 2 - r * 2, y + dy - r, x - line_w / 2, y + dy + r],  
-            fill=color,  
-        )  
-        draw.line(  
-            [(x - line_w / 2 + size * 0.14, y + dy), (x + line_w / 2, y + dy)],  
-            fill=color, width=4,  
-        )  
+                # File ended up missing/empty despite a "successful" response —
+                # retry instead of silently giving up so transient glitches
+                # (connection reset mid-download, truncated body, etc.) don't
+                # cause a false "download failed" on the first blip.
+                logger.warning(
+                    f"[API] downloaded file was empty/missing (attempt {attempt}/{max_retries}) for {video_id}"
+                )
+                if os.path.exists(file_path):
+                    try: os.remove(file_path)
+                    except: pass
+                if attempt < max_retries:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                logger.error(f"[API] gave up after {max_retries} attempts for {video_id}: file kept coming back empty")
+                return None
 
-# ---------------- main generator ----------------  
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.warning(
+                    f"[API] network error (attempt {attempt}/{max_retries}) for {video_id}: {e}"
+                )
+                if os.path.exists(file_path):
+                    try: os.remove(file_path)
+                    except: pass
+                if attempt < max_retries:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                logger.error(f"[API] gave up after {max_retries} attempts for {video_id}: {e}")
+                return None
 
-async def generate(  
-    self,  
-    song: Track,  
-) -> str:  
+            except Exception as e:
+                logger.error(f"Download exception for ID {video_id} (attempt {attempt}/{max_retries}): {e}")
+                if os.path.exists(file_path):
+                    try: os.remove(file_path)
+                    except: pass
+                if attempt < max_retries:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return None
 
-    try:  
-        temp = f"cache/raw_{song.id}.jpg"  
-        output = f"cache/{song.id}.png"  
+        return None
 
-        if os.path.exists(output):  
-            return output  
+    # ---------------- autoplay helpers ----------------
 
-        await self.save_thumb(  
-            temp,  
-            song.thumbnail,  
-        )  
+    def _format_duration(self, seconds: int) -> str:
+        seconds = max(int(seconds or 0), 0)
+        h, rem = divmod(seconds, 3600)
+        m, s = divmod(rem, 60)
+        if h:
+            return f"{h}:{m:02d}:{s:02d}"
+        return f"{m}:{s:02d}"
 
-        img = Image.open(temp).convert("RGBA")  
+    def _format_views(self, count) -> str:
+        if not count:
+            return ""
+        count = int(count)
+        if count >= 1_000_000:
+            return f"{count / 1_000_000:.1f}M views"
+        if count >= 1_000:
+            return f"{count / 1_000:.1f}K views"
+        return f"{count} views"
 
-        bg = img.resize(  
-            (self.width, self.height),  
-            Image.Resampling.LANCZOS,  
-        )  
-        bg = bg.filter(ImageFilter.GaussianBlur(45))  
-        bg = ImageEnhance.Brightness(bg).enhance(0.32)  
-        bg = bg.convert("RGBA")  
+    def _extract_related(self, video_id: str) -> dict | None:
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": "in_playlist",
+            "skip_download": True,
+            "ignoreerrors": True,
+            "geo_bypass": True,
+            "socket_timeout": 10,
+            "retries": 1,
+            "extractor_retries": 1,
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        }
+        url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
 
-        overlay = Image.new("RGBA", bg.size, (0, 0, 0, 0))  
-        draw = ImageDraw.Draw(overlay)  
+    async def _related_from_mix(
+        self, video_id: str, played: set[str]
+    ) -> Track | None:
+        loop = asyncio.get_event_loop()
+        try:
+            info = await asyncio.wait_for(
+                loop.run_in_executor(None, self._extract_related, video_id),
+                timeout=20,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"[Autoplay] Mix fetch timed out for {video_id}.")
+            return None
+        except Exception as e:
+            logger.error(f"[Autoplay] Mix fetch failed for {video_id}: {e}")
+            return None
 
-        # ---------- album art (left) ----------  
-        frame_x = 90  
-        frame_y = (self.height - self.album_size) // 2  
+        entries = (info or {}).get("entries") or []
+        for entry in entries:
+            if not entry:
+                continue
 
-        album = img.resize(  
-            (self.album_size, self.album_size),  
-            Image.Resampling.LANCZOS,  
-        )  
+            eid = entry.get("id")
+            if not eid or eid in played:
+                continue
 
-        mask = Image.new("L", (self.album_size, self.album_size), 0)  
-        ImageDraw.Draw(mask).rounded_rectangle(  
-            (0, 0, self.album_size, self.album_size),  
-            radius=self.radius,  
-            fill=255,  
-        )  
+            title = entry.get("title") or "Unknown"
+            if title.lower() in ("[deleted video]", "[private video]"):
+                continue
 
-        shadow = Image.new(  
-            "RGBA",  
-            (self.album_size + 40, self.album_size + 40),  
-            (0, 0, 0, 0),  
-        )  
-        ImageDraw.Draw(shadow).rounded_rectangle(  
-            (20, 20, self.album_size + 20, self.album_size + 20),  
-            radius=self.radius,  
-            fill=(0, 0, 0, 170),  
-        )  
-        shadow = shadow.filter(ImageFilter.GaussianBlur(18))  
+            duration = int(entry.get("duration") or 0)
+            if duration <= 0 or duration > config.DURATION_LIMIT:
+                continue
 
-        bg.alpha_composite(shadow, (frame_x - 20, frame_y - 20))  
-        bg.paste(album, (frame_x, frame_y), mask)  
+            thumbs = entry.get("thumbnails") or []
+            thumbnail = thumbs[-1]["url"].split("?")[0] if thumbs else None
 
-        # ---------- right column ----------  
-        text_x = 716  
-        right_edge = 1160  
-        top_y = 118  
+            return Track(
+                id=eid,
+                channel_name=entry.get("channel") or entry.get("uploader") or "YouTube",
+                duration=self._format_duration(duration),
+                duration_sec=duration,
+                title=title[:25],
+                thumbnail=thumbnail,
+                url=f"https://www.youtube.com/watch?v={eid}",
+                view_count=self._format_views(entry.get("view_count")),
+                video=False,
+            )
 
-        title = self.trim_text(song.title, self.font_title, 330)  
-        artist = self.trim_text(song.channel_name, self.font_artist, 350)  
+        return None
 
-        draw.text((text_x, top_y), title, font=self.font_title, fill=(255, 255, 255, 255))  
-        draw.text(  
-            (text_x, top_y + 50),  
-            artist,  
-            font=self.font_artist,  
-            fill=(200, 200, 200, 255),  
-        )  
+    async def _related_from_search(
+        self, current: Track, played: set[str]
+    ) -> Track | None:
+        """Fallback used when YouTube blocks the mix-playlist scrape (common on
+        server/cloud IPs). Reuses the same search backend that
+        already powers /play, so it works wherever normal search works."""
+        queries = []
+        if current.channel_name:
+            queries.append(f"{current.channel_name}")
+        if current.title:
+            queries.append(f"{current.title}")
 
-        # star + menu dots (top right) with gray circle backgrounds  
-        star_c = (1068, 145)  
-        dots_c = (1141, 145)  
-        self.draw_icon_bg(draw, star_c, 26, fill=(210, 210, 210, 130))  
-        self.draw_star(draw, star_c, 12, color=(255, 255, 255, 255))  
-        self.draw_icon_bg(draw, dots_c, 26, fill=(230, 230, 230, 160))  
-        self.draw_dots_menu(draw, dots_c, 26, color=(120, 120, 120, 255))  
+        for query in queries:
+            try:
+                _search = VideosSearch(query, limit=8)
+                results = await _search.next()
+            except Exception as e:
+                logger.error(f"[Autoplay] Search fallback failed for {query!r}: {e}")
+                continue
 
-        # ---------- progress bar ----------  
-        bar_y = 224  
-        bar_x = text_x  
-        bar_width = right_edge - text_x  
-        bar_height = 8  
+            for data in (results or {}).get("result", []):
+                eid = data.get("id")
+                if not eid or eid in played:
+                    continue
 
-        draw.rounded_rectangle(  
-            (bar_x, bar_y - bar_height / 2, bar_x + bar_width, bar_y + bar_height / 2),  
-            radius=4,  
-            fill=(255, 255, 255, 150),  
-        )  
+                duration_str = data.get("duration")
+                duration_sec = utils.to_seconds(duration_str) if duration_str else 0
+                if not duration_sec or duration_sec > config.DURATION_LIMIT:
+                    continue
 
-        progress = 0.02  
-        handle_r = 8  
-        hx = bar_x + bar_width * progress  
-        draw.ellipse(  
-            (hx - handle_r, bar_y - handle_r, hx + handle_r, bar_y + handle_r),  
-            fill=(255, 255, 255, 255),  
-        )  
+                return Track(
+                    id=eid,
+                    channel_name=data.get("channel", {}).get("name") or "YouTube",
+                    duration=duration_str,
+                    duration_sec=duration_sec,
+                    title=(data.get("title") or "Unknown")[:25],
+                    thumbnail=(data.get("thumbnails", [{}])[-1].get("url") or "").split("?")[0] or None,
+                    url=data.get("link"),
+                    view_count=data.get("viewCount", {}).get("short"),
+                    video=False,
+                )
 
-        draw.text(  
-            (bar_x, bar_y + 20),  
-            "0:03",  
-            font=self.font_small,  
-            fill=(210, 210, 210, 255),  
-        )  
-        duration_text = f"-{song.duration}"  
-        dur_w = self.font_small.getlength(duration_text)  
-        draw.text(  
-            (bar_x + bar_width - dur_w, bar_y + 20),  
-            duration_text,  
-            font=self.font_small,  
-            fill=(210, 210, 210, 255),  
-        )  
+        return None
 
-        # ---------- playback controls ----------  
-        controls_y = 380  
-        center_x = 939  
+    async def get_related(
+        self, current: Track, played: list[str] | None = None
+    ) -> Track | None:
+        """Fetch the next autoplay track, skipping anything already played in
+        this session. Tries YouTube's related mix first, falling back to a
+        text search (same backend as /play) if the mix is blocked or empty —
+        this is common on server/cloud IPs."""
+        if not current or not current.id:
+            return None
 
-        rewind_c = (center_x - 159, controls_y)  
-        play_c = (center_x, controls_y)  
-        forward_c = (center_x + 159, controls_y)  
+        played = set(played or [])
+        played.add(current.id)
 
-        self.draw_skip_icon(draw, rewind_c, 62, forward=False)  
-        self.draw_circle_button(draw, play_c, 29, filled=True)  
-        self.draw_pause_bars(draw, play_c, 30)  
-        self.draw_skip_icon(draw, forward_c, 62, forward=True)  
+        related = await self._related_from_mix(current.id, played)
+        if related:
+            return related
 
-        # ---------- volume row ----------  
-        vol_y = 498  
-        self.draw_speaker(draw, (bar_x, vol_y), 28, loud=False)  
+        logger.info(
+            f"[Autoplay] Mix returned nothing for {current.id}, trying search fallback."
+        )
+        related = await self._related_from_search(current, played)
+        if related:
+            return related
 
-        vol_bar_x1 = bar_x + 55  
-        vol_bar_x2 = right_edge - 55  
-        draw.rounded_rectangle(  
-            (vol_bar_x1, vol_y - 5, vol_bar_x2, vol_y + 5),  
-            radius=5,  
-            fill=(255, 255, 255, 235),  
-        )  
-        self.draw_speaker(draw, (right_edge - 28, vol_y), 28, loud=True)  
-
-        # ---------- bottom icons ----------  
-        icons_y = 582  
-        self.draw_quote_bubble(draw, (835, icons_y), 36)  
-        self.draw_list_icon(draw, (1042, icons_y), 36)  
-
-        bg = Image.alpha_composite(bg, overlay)  
-        bg = bg.convert("RGB")  
-
-        bg.save(output, quality=95)  
-
-        try:  
-            os.remove(temp)  
-        except Exception:  
-            pass  
-
-        return output  
-
-    except Exception as e:  
-        import traceback  
-        print(f"[Thumbnail Error] {e}")  
-        traceback.print_exc()  
-        return config.DEFAULT_THUMB
-
+        logger.warning(f"[Autoplay] No related track found for {current.id}.")
+        return None
