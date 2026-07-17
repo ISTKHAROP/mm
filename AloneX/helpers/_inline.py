@@ -35,7 +35,7 @@ class Inline:
         random.shuffle(styles)
         return styles
 
-    # 🎵 Custom Progress Bar Generator 
+    # 🎵 Custom Progress Bar Generator (Fixed Timer Stuck Issue)
     def get_progress_bar(self, played_str: str, dur_str: str) -> str:
         played_sec = time_to_seconds(str(played_str))
         if str(dur_str).lower() in ["live", "unknown", "0", "00:00"]:
@@ -51,13 +51,14 @@ class Inline:
             
         filled_blocks = min(max(filled_blocks, 0), total_blocks)
         
-        # Smooth progress bar with music note 🎵 leading the way
+        # FIX: autoupdate.py looks for "▬" to update the timer. 
+        # So we MUST include at least one "▬" even at 00:00.
         if filled_blocks == 0:
-            bar = "🎵" + "▱" * (total_blocks - 1)
+            bar = "▬🎵" + "▭" * (total_blocks - 2)
         elif filled_blocks == total_blocks:
-            bar = "▰" * (total_blocks - 1) + "🎵"
+            bar = "▬" * (total_blocks - 1) + "🎵"
         else:
-            bar = "▰" * filled_blocks + "🎵" + "▱" * (total_blocks - filled_blocks - 1)
+            bar = "▬" * filled_blocks + "🎵" + "▭" * (total_blocks - filled_blocks - 1)
             
         return bar
 
@@ -82,6 +83,7 @@ class Inline:
             )
         elif timer:
             try:
+                # Timer text ko parse karke apna custom bar inject kar rahe hain
                 times = re.findall(r'\d+:\d+(?::\d+)?', timer)
                 if len(times) == 2:
                     played_str = times[0]
@@ -110,7 +112,6 @@ class Inline:
                 ]
             )
             
-            # 🛠 FIX: Text ko wapas normal kar diya, sirf color change hoga
             if autoplay_on is not None:
                 ap_text = "▶️ ᴀᴜᴛᴏ-ᴘʟᴀʏ" 
                 ap_style = ButtonStyle.SUCCESS if autoplay_on else ButtonStyle.DANGER
@@ -311,5 +312,5 @@ class Inline:
                     self.ikb(text="ʏᴏᴜᴛᴜʙᴇ", url=link, style=style[0]),
                 ],
             ]
-        )
+                )
         
