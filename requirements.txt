@@ -11,4 +11,4 @@ py-yt-search~=0.6.2
 python-dotenv~=1.2.1
 yt-dlp[default]>=2026.3.17
 static-ffmpeg
-numpy==1.26.4
+numpy
