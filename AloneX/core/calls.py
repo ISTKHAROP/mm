@@ -33,8 +33,6 @@ class TgCall(PyTgCalls):
         self.autoplay_prefetching: set[int] = set()
         self.autoplay_failures: dict[int, int] = defaultdict(int)
 
-    # Note: _auto_update_timer hata diya gaya hai kyunki 'get_playing' error de raha tha.
-
     async def _prefetch_next(self, chat_id: int) -> None:
         if chat_id in self.autoplay_prefetching:
             return
@@ -63,7 +61,6 @@ class TgCall(PyTgCalls):
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
-        # Assuming db.playing exists as a setter, if it throws error change to db.is_playing etc.
         try:
             await db.playing(chat_id, paused=True)
         except:
@@ -129,7 +126,6 @@ class TgCall(PyTgCalls):
                     active_msg = await app.send_photo(chat_id=chat_id, photo=_thumb, caption=text, reply_markup=keyboard)
                     media.message_id = active_msg.id
                 
-                # Auto-update hata diya, lekin prefetch chalega
                 asyncio.create_task(self._prefetch_next(chat_id))
 
         except Exception:
@@ -167,9 +163,38 @@ class TgCall(PyTgCalls):
                     related.user = "Autoplay"
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
-                    short_title = media.title[:35] + "..." if len(media.title) > 35 else media.title
+                    short_title = media.title[:45] + "..." if len(media.title) > 45 else media.title
+                    matched_title = current.title[:45] + "..." if current and current.title else "Unknown Track"
+                    
+                    # 1. Chat me normal notice 
                     notice = await app.send_message(chat_id=chat_id, text=f"<blockquote>▶️ <b>Aᴜᴛᴏᴘʟᴀʏ Nᴇxᴛ :</b>\n🎧 <a href='{media.url}'><i>{short_title}</i></a></blockquote>", disable_web_page_preview=True)
                     asyncio.create_task(_delete_msg(notice, 6))
+
+                    # 2. LOGGER GROUP ME DETAILED LOG (As per your Screenshot)
+                    try:
+                        chat_info = await app.get_chat(chat_id)
+                        chat_title = chat_info.title
+                    except Exception:
+                        chat_title = "Unknown Chat"
+
+                    log_text = (
+                        f"<blockquote><b>🔁 AUTO-PLAY TRACK STARTED</b>\n\n"
+                        f"<b>🥀 GROUP :</b> {chat_title} [{chat_id}]\n"
+                        f"<b>🎵 PLAYING :</b> <a href='{media.url}'>{short_title}</a>\n"
+                        f"<b>🔗 MATCHED WITH :</b> {matched_title}\n"
+                        f"<b>⏭ UPCOMING :</b> Autoplay will decide next...</blockquote>"
+                    )
+                    
+                    try:
+                        if hasattr(config, "LOGGER_ID") and config.LOGGER_ID:
+                            await app.send_message(
+                                chat_id=config.LOGGER_ID, 
+                                text=log_text, 
+                                disable_web_page_preview=True
+                            )
+                    except Exception:
+                        pass
+                    # ----------------------------------------------------
 
             if not media:
                 return await self.stop(chat_id)
@@ -220,7 +245,6 @@ class TgCall(PyTgCalls):
                 except Exception:
                     pass
 
-    # YEH BOOT FUNCTION COPY HONA BAHUT ZAROORI HAI NAHI TO BOT CRASH HOGA
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
@@ -229,4 +253,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-      
+                  
