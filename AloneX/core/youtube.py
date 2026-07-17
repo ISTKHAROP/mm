@@ -6,9 +6,6 @@ import yt_dlp
 from py_yt import VideosSearch, Playlist
 from AloneX import logger, config
 
-# ERROR FIX: Yahan se 'from AloneX.helpers import Track, utils' hata diya gaya hai 
-# taaki circular import ka loop na bane.
-
 API_URL = "https://teaminflex.xyz"
 DOWNLOAD_DIR = "downloads"
 
@@ -28,10 +25,10 @@ class YouTube:
         return bool(re.match(self.regex, url))
 
     async def search(self, query: str, m_id: int, video: bool = False):
-        # ERROR FIX: Local import use kiya gaya hai
         from AloneX.helpers import Track, utils 
         
         try:
+            # Search limit 1 hi rakhi hai taki response sabse fast aaye
             _search = VideosSearch(query, limit=1)
             results = await _search.next()
             if results and results["result"]:
@@ -53,7 +50,6 @@ class YouTube:
         return None
 
     async def playlist(self, limit: int, user: str, url: str, video: bool):
-        # ERROR FIX: Local import use kiya gaya hai
         from AloneX.helpers import Track, utils
         
         tracks = []
@@ -91,13 +87,16 @@ class YouTube:
             return file_path
 
         max_retries = 3
-        retry_delay = 1  # seconds, flat delay — keep response fast
+        retry_delay = 1  
         transient_statuses = {502, 503, 504}
 
         for attempt in range(1, max_retries + 1):
             try:
+                # 🚀 SPEED UP: TCPConnector use kiya taki connections fast establish hon
+                connector = aiohttp.TCPConnector(limit=50, enable_cleanup_closed=True)
                 async with aiohttp.ClientSession(
-                    timeout=aiohttp.ClientTimeout(total=60)
+                    timeout=aiohttp.ClientTimeout(total=45), # Timeout 60s se 45s kiya
+                    connector=connector
                 ) as session:
                     payload = {"url": video_id, "type": "video" if video else "audio"}
                     headers = {
@@ -105,40 +104,29 @@ class YouTube:
                         "X-API-KEY": config.YOUTUBE_API_KEY
                     }
 
-                    # Step 1: Trigger API
                     async with session.post(f"{API_URL}/download", json=payload, headers=headers) as response:
                         if response.status == 401:
                             logger.error("[API] Invalid API key")
                             return None
 
                         if response.status in transient_statuses:
-                            logger.warning(
-                                f"[API] returned {response.status} (attempt {attempt}/{max_retries}) for {video_id}"
-                            )
                             if attempt < max_retries:
                                 await asyncio.sleep(retry_delay)
                                 continue
-                            logger.error(f"[API] gave up after {max_retries} attempts for {video_id}")
                             return None
 
                         if response.status != 200:
-                            logger.error(f"[API] returned {response.status}")
                             return None
 
                         try:
                             data = await response.json()
-                        except Exception as e:
-                            logger.warning(
-                                f"[API] invalid JSON response (attempt {attempt}/{max_retries}) for {video_id}: {e}"
-                            )
+                        except Exception:
                             if attempt < max_retries:
                                 await asyncio.sleep(retry_delay)
                                 continue
-                            logger.error(f"[API] gave up after {max_retries} attempts for {video_id}")
                             return None
 
                         if data.get("status") != "success" or not data.get("download_url"):
-                            logger.error(f"[API] response error: {data}")
                             if attempt < max_retries:
                                 await asyncio.sleep(retry_delay)
                                 continue
@@ -146,63 +134,40 @@ class YouTube:
 
                         download_link = f"{API_URL}{data['download_url']}"
 
-                    # Step 2: Download file
                     async with session.get(download_link) as file_response:
-                        if file_response.status in transient_statuses:
-                            logger.warning(
-                                f"[API] file download returned {file_response.status} (attempt {attempt}/{max_retries}) for {video_id}"
-                            )
-                            if attempt < max_retries:
-                                await asyncio.sleep(retry_delay)
-                                continue
-                            logger.error(f"[API] gave up after {max_retries} attempts for {video_id}")
-                            return None
-
-                        if file_response.status != 200:
-                            logger.error(f"[API] Download failed ({file_response.status})")
+                        if file_response.status in transient_statuses or file_response.status != 200:
                             if attempt < max_retries:
                                 await asyncio.sleep(retry_delay)
                                 continue
                             return None
 
                         with open(file_path, "wb") as f:
-                            async for chunk in file_response.content.iter_chunked(8192):
+                            # 🚀 SPEED UP: Chunk size 8192 (8KB) se 1048576 (1MB) kar diya. 
+                            # Isse downloading directly disk par fast likhi jayegi.
+                            async for chunk in file_response.content.iter_chunked(1048576):
                                 f.write(chunk)
 
                 if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                     return file_path
 
-                # File ended up missing/empty despite a "successful" response —
-                # retry instead of silently giving up so transient glitches
-                # (connection reset mid-download, truncated body, etc.) don't
-                # cause a false "download failed" on the first blip.
-                logger.warning(
-                    f"[API] downloaded file was empty/missing (attempt {attempt}/{max_retries}) for {video_id}"
-                )
                 if os.path.exists(file_path):
                     try: os.remove(file_path)
                     except: pass
                 if attempt < max_retries:
                     await asyncio.sleep(retry_delay)
                     continue
-                logger.error(f"[API] gave up after {max_retries} attempts for {video_id}: file kept coming back empty")
                 return None
 
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                logger.warning(
-                    f"[API] network error (attempt {attempt}/{max_retries}) for {video_id}: {e}"
-                )
+            except (aiohttp.ClientError, asyncio.TimeoutError):
                 if os.path.exists(file_path):
                     try: os.remove(file_path)
                     except: pass
                 if attempt < max_retries:
                     await asyncio.sleep(retry_delay)
                     continue
-                logger.error(f"[API] gave up after {max_retries} attempts for {video_id}: {e}")
                 return None
 
-            except Exception as e:
-                logger.error(f"Download exception for ID {video_id} (attempt {attempt}/{max_retries}): {e}")
+            except Exception:
                 if os.path.exists(file_path):
                     try: os.remove(file_path)
                     except: pass
@@ -241,7 +206,7 @@ class YouTube:
             "skip_download": True,
             "ignoreerrors": True,
             "geo_bypass": True,
-            "socket_timeout": 10,
+            "socket_timeout": 5, # 🚀 SPEED UP: Isko 10 se 5 kar diya taki response jaldi process ho
             "retries": 1,
             "extractor_retries": 1,
             "extractor_args": {"youtube": {"player_client": ["android"]}},
@@ -251,14 +216,13 @@ class YouTube:
             return ydl.extract_info(url, download=False)
 
     async def _related_from_mix(self, video_id: str, played: set[str]):
-        # ERROR FIX: Local import use kiya gaya hai
         from AloneX.helpers import Track
         
         loop = asyncio.get_event_loop()
         try:
             info = await asyncio.wait_for(
                 loop.run_in_executor(None, self._extract_related, video_id),
-                timeout=20,
+                timeout=15, # 🚀 SPEED UP: Iska wait time kam kar diya hai 
             )
         except asyncio.TimeoutError:
             logger.warning(f"[Autoplay] Mix fetch timed out for {video_id}.")
@@ -302,18 +266,20 @@ class YouTube:
         return None
 
     async def _related_from_search(self, current, played: set[str]):
-        # ERROR FIX: Local import use kiya gaya hai
         from AloneX.helpers import Track, utils
         
         queries = []
+        if current.title and current.channel_name:
+            queries.append(f"{current.title} {current.channel_name}")
         if current.channel_name:
-            queries.append(f"{current.channel_name}")
+            queries.append(f"{current.channel_name} best songs")
         if current.title:
-            queries.append(f"{current.title}")
+            queries.append(f"{current.title} similar songs")
 
         for query in queries:
             try:
-                _search = VideosSearch(query, limit=8)
+                # Limit 5 kiya taki loop chota rahe aur jaldi related song mil jaye
+                _search = VideosSearch(query, limit=5)
                 results = await _search.next()
             except Exception as e:
                 logger.error(f"[Autoplay] Search fallback failed for {query!r}: {e}")
@@ -357,10 +323,11 @@ class YouTube:
         logger.info(
             f"[Autoplay] Mix returned nothing for {current.id}, trying search fallback."
         )
+        
         related = await self._related_from_search(current, played)
         if related:
             return related
 
         logger.warning(f"[Autoplay] No related track found for {current.id}.")
         return None
-                                
+        
