@@ -13,10 +13,10 @@ class VCLogger:
     def __init__(self):
         self.join_count: dict[tuple, int] = {}
         self.user_cache: dict[int, tuple] = {}
-        # Un chats ki list jahan ye manually OFF kiya gaya hai (Temporary RAM storage)
+        # List of chats where it has been manually turned OFF (Temporary RAM storage)
         self.disabled_chats: set[int] = set() 
 
-    # Check karne ke liye ki chat me enabled hai ya nahi
+    # Check whether logging is enabled in the chat or not
     def is_enabled(self, chat_id: int) -> bool:
         return chat_id not in self.disabled_chats
 
@@ -105,18 +105,23 @@ vc_log = VCLogger()
 async def toggle_vclog(client, message: Message):
     if len(message.command) < 2:
         state = "ENABLED" if vc_log.is_enabled(message.chat.id) else "DISABLED"
-        return await message.reply_text(f"Video Chat Logging is chat me **{state}** hai.\n\nChange karne ke liye use karein:\n`/vclog off` - Band karne ke liye\n`/vclog on` - Chalu karne ke liye")
+        return await message.reply_text(
+            f"Video Chat Logging is currently **{state}** in this chat.\n\n"
+            "To change the settings, use:\n"
+            "`/vclog off` - To turn off\n"
+            "`/vclog on` - To turn on"
+        )
 
     cmd_arg = message.command[1].lower()
     chat_id = message.chat.id
 
     if cmd_arg == "off":
         vc_log.disabled_chats.add(chat_id)
-        await message.reply_text("✅ Video Chat logging is group me **band (OFF)** kar di gayi hai.")
+        await message.reply_text("✅ Video Chat logging has been **DISABLED (OFF)** for this group.")
     elif cmd_arg == "on":
         if chat_id in vc_log.disabled_chats:
             vc_log.disabled_chats.remove(chat_id)
-        await message.reply_text("✅ Video Chat logging is group me **chalu (ON)** kar di gayi hai.")
+        await message.reply_text("✅ Video Chat logging has been **ENABLED (ON)** for this group.")
     else:
-        await message.reply_text("❌ Galat command. Sirf `/vclog on` ya `/vclog off` use karein.")
+        await message.reply_text("❌ Invalid command. Please use only `/vclog on` or `/vclog off`.")
         
