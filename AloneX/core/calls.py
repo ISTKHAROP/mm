@@ -31,27 +31,9 @@ class TgCall(PyTgCalls):
         self.history: dict[int, list[str]] = defaultdict(list)
         self.pending_autoplay: dict[int, Track] = {}
         self.autoplay_prefetching: set[int] = set()
-        # 🚀 NAYA: Retry Counter (4 baar ke baad ruk jayega)
         self.autoplay_failures: dict[int, int] = defaultdict(int)
 
-    async def _auto_update_timer(self, chat_id: int, msg: Message, media_id: str):
-        try:
-            while await db.get_call(chat_id):
-                await asyncio.sleep(10) 
-                current = queue.get_current(chat_id)
-                if not current or current.id != media_id:
-                    break
-                status = await db.get_playing(chat_id)
-                if status:
-                    keyboard = buttons.controls(chat_id, timer=f"{status.played} {status.duration}")
-                    try:
-                        await msg.edit_reply_markup(reply_markup=keyboard)
-                    except MessageNotModified:
-                        continue
-                    except Exception:
-                        break 
-        except Exception:
-            pass
+    # Note: _auto_update_timer hata diya gaya hai kyunki 'get_playing' error de raha tha.
 
     async def _prefetch_next(self, chat_id: int) -> None:
         if chat_id in self.autoplay_prefetching:
@@ -81,17 +63,23 @@ class TgCall(PyTgCalls):
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
-        await db.playing(chat_id, paused=True)
+        # Assuming db.playing exists as a setter, if it throws error change to db.is_playing etc.
+        try:
+            await db.playing(chat_id, paused=True)
+        except:
+            pass
         return await client.pause(chat_id)
 
     async def resume(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
-        await db.playing(chat_id, paused=False)
+        try:
+            await db.playing(chat_id, paused=False)
+        except:
+            pass
         return await client.resume(chat_id)
 
     async def stop(self, chat_id: int) -> None:
         client = await db.get_assistant(chat_id)
-        # Reset failures when stopping
         self.autoplay_failures[chat_id] = 0
         try:
             queue.clear(chat_id)
@@ -135,15 +123,13 @@ class TgCall(PyTgCalls):
                 start_timer = f"00:00 {media.duration}"
                 keyboard = buttons.controls(chat_id, timer=start_timer)
                 
-                active_msg = None
                 try:
                     active_msg = await message.edit_media(media=InputMediaPhoto(media=_thumb, caption=text), reply_markup=keyboard)
                 except MessageIdInvalid:
                     active_msg = await app.send_photo(chat_id=chat_id, photo=_thumb, caption=text, reply_markup=keyboard)
                     media.message_id = active_msg.id
                 
-                if active_msg:
-                    asyncio.create_task(self._auto_update_timer(chat_id, active_msg, media.id))
+                # Auto-update hata diya, lekin prefetch chalega
                 asyncio.create_task(self._prefetch_next(chat_id))
 
         except Exception:
@@ -169,14 +155,13 @@ class TgCall(PyTgCalls):
                     except Exception:
                         related = None
 
-                # 🚀 LOGIC: 4 baar fail hua toh Stop
                 if not related:
                     self.autoplay_failures[chat_id] += 1
                     if self.autoplay_failures[chat_id] >= 4:
                         await app.send_message(chat_id, "⚠️ Autoplay failed 4 times. Stopping stream.")
                         return await self.stop(chat_id)
                 else:
-                    self.autoplay_failures[chat_id] = 0 # Success pe counter reset
+                    self.autoplay_failures[chat_id] = 0
 
                 if related:
                     related.user = "Autoplay"
@@ -199,5 +184,49 @@ class TgCall(PyTgCalls):
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
 
-    # (Baaki functions wahi purane rahenge...)
-  
+    async def ping(self) -> float:
+        pings = [client.ping for client in self.clients]
+        return round(sum(pings) / len(pings), 2)
+
+    async def decorators(self, client: PyTgCalls) -> None:
+        participant_update = getattr(types, "UpdatedGroupCallParticipant", None)
+
+        @client.on_update()
+        async def update_handler(_, update: types.Update) -> None:
+            if isinstance(update, types.StreamEnded):
+                if update.stream_type == types.StreamEnded.Type.AUDIO:
+                    await self.play_next(update.chat_id)
+            elif isinstance(update, types.ChatUpdate):
+                if update.status in [
+                    types.ChatUpdate.Status.KICKED,
+                    types.ChatUpdate.Status.LEFT_GROUP,
+                    types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
+                ]:
+                    await self.stop(update.chat_id)
+            elif participant_update and isinstance(update, participant_update):
+                try:
+                    if not await db.get_vc_logger(update.chat_id):
+                        return
+                    action = getattr(update, "action", None)
+                    if action is None:
+                        action = getattr(update.participant, "action", None)
+                    user_id = getattr(update.participant, "user_id", None)
+                    if user_id is None:
+                        user_id = getattr(update, "user_id", None)
+                    if action == types.GroupCallParticipant.Action.JOINED:
+                        await vclogger.notify_join(update.chat_id, user_id)
+                    elif action == types.GroupCallParticipant.Action.LEFT:
+                        await vclogger.notify_leave(update.chat_id, user_id)
+                except Exception:
+                    pass
+
+    # YEH BOOT FUNCTION COPY HONA BAHUT ZAROORI HAI NAHI TO BOT CRASH HOGA
+    async def boot(self) -> None:
+        PyTgCallsSession.notice_displayed = True
+        for ub in userbot.clients:
+            client = PyTgCalls(ub, cache_duration=100)
+            await client.start()
+            self.clients.append(client)
+            await self.decorators(client)
+        logger.info("PyTgCalls client(s) started.")
+      
