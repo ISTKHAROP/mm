@@ -1,389 +1,191 @@
+# Copyright (c) 2025 TheHamkerAlone 
+# Licensed under the MIT License.
+# This file is part of AloneX
+
 import os
-import math
+import asyncio
+import numpy as np
+import re
 import aiohttp
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from collections import Counter
+from aloneX import config
+from aloneX.helpers import Track
 
-from PIL import (
-    Image,
-    ImageDraw,
-    ImageEnhance,
-    ImageFilter,
-    ImageFont,
-)
+try:
+    from unidecode import unidecode
+except ImportError:
+    def unidecode(text):
+        return text
 
-from AloneX import config
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_TITLE_PATH = os.path.join(BASE_DIR, "font.ttf")
+FONT_INFO_PATH = os.path.join(BASE_DIR, "font2.ttf")
+TEMPLATE_PATH = os.path.join(BASE_DIR, "..", "assets", "template.png")
+
+def safe_font(path, size):
+    try:
+        return ImageFont.truetype(path, size)
+    except Exception:
+        return ImageFont.load_default()
 
 class Thumbnail:
     def __init__(self):
-        self.width = 1280
-        self.height = 720
+        self.size = (1280, 720)
+        self.font_title = safe_font(FONT_TITLE_PATH, 26)
+        self.font_info = safe_font(FONT_INFO_PATH, 20)
 
-        self.album_size = 520
-        self.radius = 36
+    async def start(self):
+        os.makedirs("cache", exist_ok=True)
 
-        self.font_title = ImageFont.truetype(
-            "AloneX/helpers/Raleway-Bold.ttf",
-            36,
-        )
+        if not os.path.exists(FONT_TITLE_PATH):
+            print(f"Missing font: {FONT_TITLE_PATH}")
 
-        self.font_artist = ImageFont.truetype(
-            "AloneX/helpers/Inter-Light.ttf",
-            26,
-        )
+        if not os.path.exists(FONT_INFO_PATH):
+            print(f"Missing font: {FONT_INFO_PATH}")
 
-        self.font_small = ImageFont.truetype(
-            "AloneX/helpers/Inter-Light.ttf",
-            22,
-        )
+        if not os.path.exists(TEMPLATE_PATH):
+            print(f"Missing template: {TEMPLATE_PATH}")
 
-    # ---------------- basic helpers ----------------
+        return True
 
-    async def save_thumb(
-        self,
-        output_path: str,
-        url: str,
-    ) -> str:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                open(output_path, "wb").write(
-                    await resp.read()
-                )
+    async def save_thumb(self, output_path: str, url: str) -> str:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        for attempt in range(3):
+            try:
+                if url.startswith("http"):
+                    async with aiohttp.ClientSession(headers=headers) as session:
+                        async with session.get(url, timeout=15) as resp:
+                            if resp.status == 200:
+                                content = await resp.read()
+                                with open(output_path, "wb") as f:
+                                    f.write(content)
+                                return output_path
+            except Exception as e:
+                if attempt == 2:
+                    print(f"Error saving thumb: {e}")
+                await asyncio.sleep(1)
         return output_path
 
-    def trim_text(
-        self,
-        text,
-        font,
-        max_width,
-    ):
-        if font.getlength(text) <= max_width:
-            return text
-
-        dots = "..."
-
-        for i in range(len(text), 0, -1):
-            temp = text[:i] + dots
-
-            if font.getlength(temp) <= max_width:
-                return temp
-
-        return dots
-
-    # ---------------- icon drawing helpers ----------------
-
-    def draw_icon_bg(self, draw, center, radius, fill=(255, 255, 255, 60)):
-        x, y = center
-        draw.ellipse(
-            [x - radius, y - radius, x + radius, y + radius],
-            fill=fill,
-        )
-
-    def draw_star(self, draw, center, size, color=(255, 255, 255, 255)):
-        x, y = center
-        points = []
-        for i in range(10):
-            angle = math.pi / 2 + i * math.pi / 5
-            r = size if i % 2 == 0 else size * 0.42
-            points.append(
-                (x + r * math.cos(angle), y - r * math.sin(angle))
-            )
-        draw.polygon(points, outline=color, width=2)
-
-    def draw_dots_menu(self, draw, center, size, color=(120, 120, 120, 255)):
-        x, y = center
-        r = size * 0.11
-        for i in (-1, 0, 1):
-            cy = y + i * size * 0.34
-            draw.ellipse([x - r, cy - r, x + r, cy + r], fill=color)
-
-    def draw_pause_bars(self, draw, center, size, color=(255, 255, 255, 255)):
-        # Color change kar diya (default White ab)
-        x, y = center
-        bar_w = size * 0.17
-        bar_h = size * 0.9
-        gap = size * 0.20
-        draw.rounded_rectangle(
-            [x - gap - bar_w / 2, y - bar_h / 2, x - gap + bar_w / 2, y + bar_h / 2],
-            radius=2,
-            fill=color,
-        )
-        draw.rounded_rectangle(
-            [x + gap - bar_w / 2, y - bar_h / 2, x + gap + bar_w / 2, y + bar_h / 2],
-            radius=2,
-            fill=color,
-        )
-
-    def draw_skip_icon(self, draw, center, size, forward=True, color=(255, 255, 255, 255)):
-        x, y = center
-        tri_w = size * 0.44
-        tri_h = size * 0.95
-        gap = size * 0.26
-        for dx in (-gap, gap):
-            cx = x + dx
-            if forward:
-                pts = [
-                    (cx - tri_w / 2, y - tri_h / 2),
-                    (cx - tri_w / 2, y + tri_h / 2),
-                    (cx + tri_w / 2, y),
-                ]
-            else:
-                pts = [
-                    (cx + tri_w / 2, y - tri_h / 2),
-                    (cx + tri_w / 2, y + tri_h / 2),
-                    (cx - tri_w / 2, y),
-                ]
-            draw.polygon(pts, fill=color)
-
-    def draw_speaker(self, draw, pos, size, color=(255, 255, 255, 255), loud=True):
-        x, y = pos
-        body_w = size * 0.36
-        body_h = size * 0.5
-        draw.polygon(
-            [
-                (x, y - body_h * 0.22),
-                (x + body_w * 0.42, y - body_h * 0.22),
-                (x + body_w, y - body_h / 2),
-                (x + body_w, y + body_h / 2),
-                (x + body_w * 0.42, y + body_h * 0.22),
-                (x, y + body_h * 0.22),
-            ],
-            fill=color,
-        )
-        if loud:
-            draw.arc(
-                [x + body_w - 2, y - size * 0.38, x + body_w + size * 0.38, y + size * 0.38],
-                -55, 55, fill=color, width=3,
-            )
-            draw.arc(
-                [x + body_w - 2, y - size * 0.22, x + body_w + size * 0.22, y + size * 0.22],
-                -55, 55, fill=color, width=3,
-            )
-
-    def draw_quote_bubble(self, draw, center, size, color=(255, 255, 255, 255)):
-        x, y = center
-        top = y - size * 0.42
-        bottom = y + size * 0.10
-        draw.rounded_rectangle(
-            [x - size / 2, top, x + size / 2, bottom],
-            radius=size * 0.22,
-            outline=color,
-            width=3,
-        )
-        draw.polygon(
-            [
-                (x - size * 0.14, bottom - 2),
-                (x - size * 0.14, bottom + size * 0.24),
-                (x + size * 0.12, bottom - 2),
-            ],
-            fill=color,
-        )
-        qh = size * 0.16
-        qw = size * 0.09
-        cy = (top + bottom) / 2 - 2
-        draw.rounded_rectangle(
-            [x - size * 0.20, cy - qh / 2, x - size * 0.20 + qw, cy + qh / 2],
-            radius=2, fill=color,
-        )
-        draw.rounded_rectangle(
-            [x + size * 0.06, cy - qh / 2, x + size * 0.06 + qw, cy + qh / 2],
-            radius=2, fill=color,
-        )
-
-    def draw_list_icon(self, draw, center, size, color=(255, 255, 255, 255)):
-        x, y = center
-        line_w = size * 0.62
-        for dy in (-size * 0.28, 0, size * 0.28):
-            r = size * 0.05
-            draw.ellipse(
-                [x - line_w / 2 - r * 2, y + dy - r, x - line_w / 2, y + dy + r],
-                fill=color,
-            )
-            draw.line(
-                [(x - line_w / 2 + size * 0.14, y + dy), (x + line_w / 2, y + dy)],
-                fill=color, width=4,
-            )
-
-    # ---------------- main generator ----------------
-
-    async def generate(self, song):
-        from AloneX.helpers import Track
-
+    async def generate(self, song: Track) -> str:
         try:
-            temp = f"cache/raw_{song.id}.jpg"
-            output = f"cache/{song.id}.png"
+            os.makedirs("cache", exist_ok=True)
+            temp = f"cache/temp_{song.id}.jpg"
+            final_path = f"cache/{song.id}.png"
+            if os.path.exists(final_path):
+                return final_path
 
-            if os.path.exists(output):
-                return output
-
-            await self.save_thumb(
-                temp,
-                song.thumbnail,
-            )
-
-            img = Image.open(temp).convert("RGBA")
-
-            bg = img.resize(
-                (self.width, self.height),
-                Image.Resampling.LANCZOS,
-            )
-            bg = bg.filter(ImageFilter.GaussianBlur(45))
-            bg = ImageEnhance.Brightness(bg).enhance(0.32)
-            bg = bg.convert("RGBA")
-
-            overlay = Image.new("RGBA", bg.size, (0, 0, 0, 0))
-            draw = ImageDraw.Draw(overlay)
-
-            # ---------- album art (left) ----------
-            frame_x = 90
-            frame_y = (self.height - self.album_size) // 2
-
-            album = img.resize(
-                (self.album_size, self.album_size),
-                Image.Resampling.LANCZOS,
-            )
-
-            mask = Image.new("L", (self.album_size, self.album_size), 0)
-            ImageDraw.Draw(mask).rounded_rectangle(
-                (0, 0, self.album_size, self.album_size),
-                radius=self.radius,
-                fill=255,
-            )
-
-            shadow = Image.new(
-                "RGBA",
-                (self.album_size + 40, self.album_size + 40),
-                (0, 0, 0, 0),
-            )
-            ImageDraw.Draw(shadow).rounded_rectangle(
-                (20, 20, self.album_size + 20, self.album_size + 20),
-                radius=self.radius,
-                fill=(0, 0, 0, 170),
-            )
-            shadow = shadow.filter(ImageFilter.GaussianBlur(18))
-
-            bg.alpha_composite(shadow, (frame_x - 20, frame_y - 20))
-            bg.paste(album, (frame_x, frame_y), mask)
-
-            # --- TEXT ON ALBUM ART (Like Image) ---
-            # Format Views text
-            view_str = song.view_count if hasattr(song, "view_count") and song.view_count else "25 M"
-            view_str = str(view_str).upper().replace(" VIEWS", "")
+            await self.save_thumb(temp, song.thumbnail)
             
-            draw.text((frame_x + 35, frame_y + self.album_size - 100), view_str, font=self.font_title, fill=(255, 255, 255, 255))
-            draw.text((frame_x + 35, frame_y + self.album_size - 55), "VIEWS", font=self.font_artist, fill=(255, 255, 255, 255))
+            try:
+                src = Image.open(temp).convert("RGBA")
+            except Exception:
+                try:
+                    src = Image.new("RGBA", (1280, 720), (30, 30, 30, 255))
+                except Exception:
+                    return config.DEFAULT_THUMB
 
-            draw.text((frame_x + self.album_size - 145, frame_y + self.album_size - 95), "OFFICIAL", font=self.font_small, fill=(255, 255, 255, 255))
-            draw.text((frame_x + self.album_size - 110, frame_y + self.album_size - 60), "VIDEO", font=self.font_artist, fill=(255, 255, 255, 255))
-            # --------------------------------------
+            W, H = self.size
 
-            # ---------- right column ----------
-            text_x = 716
-            right_edge = 1160
-            top_y = 118
+            # 1. BLURRED BACKGROUND from song image
+            bg_ratio = W / H
+            src_ratio = src.width / src.height
+            if src_ratio > bg_ratio:
+                new_w = int(src.height * bg_ratio)
+                offset = (src.width - new_w) // 2
+                bg = src.crop((offset, 0, offset + new_w, src.height))
+            else:
+                new_h = int(src.width / bg_ratio)
+                offset = (src.height - new_h) // 2
+                bg = src.crop((0, offset, src.width, offset + new_h))
 
-            title = self.trim_text(song.title, self.font_title, 330)
-            artist = self.trim_text(song.channel_name, self.font_artist, 350)
+            bg = bg.resize((W, H), Image.Resampling.LANCZOS)
+            bg = bg.filter(ImageFilter.GaussianBlur(25))
 
-            draw.text((text_x, top_y), title, font=self.font_title, fill=(255, 255, 255, 255))
-            draw.text(
-                (text_x, top_y + 50),
-                artist,
-                font=self.font_artist,
-                fill=(200, 200, 200, 255),
+            # Darken slightly
+            bg_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 100))
+            bg = Image.alpha_composite(bg, bg_overlay)
+
+            # 2. LOAD TEMPLATE & extract UI with soft alpha
+            if os.path.exists(TEMPLATE_PATH):
+                tpl = Image.open(TEMPLATE_PATH).convert("RGBA")
+                tpl = tpl.resize((W, H), Image.Resampling.LANCZOS)
+
+                tpl_arr = np.array(tpl).astype(float)
+                r, g, b = tpl_arr[:,:,0], tpl_arr[:,:,1], tpl_arr[:,:,2]
+
+                d_bg = np.maximum(np.maximum(np.abs(r - 147.5), np.abs(g - 147.5)), np.abs(b - 147.5))
+                alpha = np.clip((d_bg - 8) / 17.0 * 255, 0, 255)
+                alpha[:, :640] = 0
+
+                tpl_arr[:,:,3] = alpha
+                tpl = Image.fromarray(tpl_arr.astype(np.uint8))
+                
+                bg = Image.alpha_composite(bg, tpl)
+
+            # 3. PASTE COVER ART & DROP SHADOW
+            cover_x, cover_y = 100, 104
+            cover_w, cover_h = 512, 512
+            cover_radius = 38
+
+            shadow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            shadow_draw = ImageDraw.Draw(shadow_layer)
+            shadow_draw.rounded_rectangle(
+                (cover_x + 6, cover_y + 8, cover_x + cover_w + 6, cover_y + cover_h + 8),
+                radius=cover_radius + 4,
+                fill=(0, 0, 0, 140),
             )
+            shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(18))
+            bg = Image.alpha_composite(bg, shadow_layer)
 
-            # star + menu dots (top right) with gray circle backgrounds
-            star_c = (1068, 145)
-            dots_c = (1141, 145)
-            self.draw_icon_bg(draw, star_c, 26, fill=(210, 210, 210, 130))
-            self.draw_star(draw, star_c, 12, color=(255, 255, 255, 255))
-            self.draw_icon_bg(draw, dots_c, 26, fill=(230, 230, 230, 160))
-            self.draw_dots_menu(draw, dots_c, 26, color=(120, 120, 120, 255))
-
-            # ---------- progress bar ----------
-            bar_y = 224
-            bar_x = text_x
-            bar_width = right_edge - text_x
-            bar_height = 8
-
-            draw.rounded_rectangle(
-                (bar_x, bar_y - bar_height / 2, bar_x + bar_width, bar_y + bar_height / 2),
-                radius=4,
-                fill=(255, 255, 255, 150),
+            cover_resized = src.resize((cover_w, cover_h), Image.Resampling.LANCZOS)
+            cover_mask = Image.new("L", (cover_w, cover_h), 0)
+            ImageDraw.Draw(cover_mask).rounded_rectangle(
+                (0, 0, cover_w, cover_h), radius=cover_radius, fill=255
             )
+            bg.paste(cover_resized, (cover_x, cover_y), cover_mask)
 
-            progress = 0.02
-            handle_r = 8
-            hx = bar_x + bar_width * progress
-            draw.ellipse(
-                (hx - handle_r, bar_y - handle_r, hx + handle_r, bar_y + handle_r),
-                fill=(255, 255, 255, 255),
-            )
+            # 4. ADD TEXT 
+            draw = ImageDraw.Draw(bg)
+            text_x = 715
+            text_max_w = 320
 
-            draw.text(
-                (bar_x, bar_y + 20),
-                "0:03",
-                font=self.font_small,
-                fill=(210, 210, 210, 255),
-            )
-            duration_text = f"-{song.duration}"
-            dur_w = self.font_small.getlength(duration_text)
-            draw.text(
-                (bar_x + bar_width - dur_w, bar_y + 20),
-                duration_text,
-                font=self.font_small,
-                fill=(210, 210, 210, 255),
-            )
+            def ellipsize(s, font, max_w):
+                if draw.textbbox((0, 0), s, font=font)[2] <= max_w:
+                    return s
+                lo, hi = 1, len(s)
+                best = "…"
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    cand = s[:mid].rstrip() + "…"
+                    if draw.textbbox((0, 0), cand, font=font)[2] <= max_w:
+                        best = cand
+                        lo = mid + 1
+                    else:
+                        hi = mid - 1
+                return best
 
-            # ---------- playback controls ----------
-            controls_y = 380
-            center_x = 939
+            title_str = ellipsize(unidecode(str(song.title)), self.font_title, text_max_w)
+            title_y = cover_y + 12
+            draw.text((text_x, title_y), title_str, fill=(255, 255, 255, 255), font=self.font_title)
 
-            rewind_c = (center_x - 159, controls_y)
-            play_c = (center_x, controls_y)
-            forward_c = (center_x + 159, controls_y)
-
-            self.draw_skip_icon(draw, rewind_c, 62, forward=False)
+            artist_str = ellipsize(unidecode(str(song.channel_name)), self.font_info, text_max_w + 60)
+            artist_y = title_y + 40
+            draw.text((text_x, artist_y), artist_str, fill=(200, 200, 200, 255), font=self.font_info)
             
-            # --- PLAY/PAUSE BUTTON FIX (Like Image) ---
-            # Bina circle ke sirf white pause bars
-            self.draw_pause_bars(draw, play_c, 45, color=(255, 255, 255, 255))
-            # ------------------------------------------
-            
-            self.draw_skip_icon(draw, forward_c, 62, forward=True)
-
-            # ---------- volume row ----------
-            vol_y = 498
-            self.draw_speaker(draw, (bar_x, vol_y), 28, loud=False)
-
-            vol_bar_x1 = bar_x + 55
-            vol_bar_x2 = right_edge - 55
-            draw.rounded_rectangle(
-                (vol_bar_x1, vol_y - 5, vol_bar_x2, vol_y + 5),
-                radius=5,
-                fill=(255, 255, 255, 235),
-            )
-            self.draw_speaker(draw, (right_edge - 28, vol_y), 28, loud=True)
-
-            # ---------- bottom icons ----------
-            icons_y = 582
-            self.draw_quote_bubble(draw, (835, icons_y), 36)
-            self.draw_list_icon(draw, (1042, icons_y), 36)
-
-            bg = Image.alpha_composite(bg, overlay)
-            bg = bg.convert("RGB")
-
-            bg.save(output, quality=95)
+            out = bg.convert("RGB")
+            out.save(final_path, "PNG")
 
             try:
-                os.remove(temp)
+                if os.path.exists(temp):
+                    os.remove(temp)
             except Exception:
                 pass
 
-            return output
+            return final_path
 
         except Exception as e:
-            import traceback
-            print(f"[Thumbnail Error] {e}")
-            traceback.print_exc()
-            return config.DEFAULT_THUMB
-            
+            print(f"Error: {e}")
+            return config.DEFAULT_THUMB            
