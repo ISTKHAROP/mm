@@ -33,38 +33,26 @@ async def start(_, message: types.Message):
         # --- STICKER ADDED AT THE START ---
         await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
         
+        # API FloodWait se bachne aur animation fast karne ke liye steps optimize kiye hain
         baby = await message.reply_text("ᴅɪηɢ ᴅᴏηɢ.🥀")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ..🥀")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ...🥀")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ....🥀")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ.....🥀")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
 
         await baby.edit_text("sᴛᴧʀᴛɪηɢ.❤️‍🔥")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("sᴛᴧʀᴛɪηɢ..❤️‍🔥")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         await baby.edit_text("sᴛᴧʀᴛɪηɢ...❤️‍🔥")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("sᴛᴧʀᴛɪηɢ....❤️‍🔥")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         await baby.edit_text("sᴛᴧʀᴛɪηɢ.....❤️‍🔥")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
 
-        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ.💤")
-        await asyncio.sleep(0.2)
         await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ..💤")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ...💤")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ....💤")
-        await asyncio.sleep(0.2)
-        await baby.edit_text("ʙσᴛ sᴛᴧʀᴛєᴅ.....💤")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.1)
+        
         await baby.delete()
 
     # --- HANDLE /start help ---
