@@ -2,17 +2,14 @@
 # Licensed under the MIT License.
 # This file is part of AloneXMusic
 
-
 import asyncio
 
 from pyrogram import filters, types
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton # <-- Yahan buttons import kiye
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from AloneX import app, db, lang
-from AloneX.helpers import buttons
 
 DELETE_DELAY = 7
-
 
 async def _delete_later(message: types.Message) -> None:
     try:
@@ -20,7 +17,6 @@ async def _delete_later(message: types.Message) -> None:
         await message.delete()
     except Exception:
         pass
-
 
 @app.on_message(filters.command(["autoplay"]) & filters.group & ~app.bl_users)
 @lang.language()
@@ -45,14 +41,12 @@ async def _autoplay(_, m: types.Message):
         asyncio.create_task(_delete_later(msg))
         return
 
-    # bare /autoplay or /autoplay on -> show the panel
-    
-    # 🛠 YAHAN FIX HAI: Humne direct keyboard yahi bana diya taaki buttons.py ka error na aaye.
+    # 🛠 FIX 1: Callback data me chat_id daal diya taaki backend samajh sake
     autoplay_keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(text="✅ Enable", callback_data="enable_autoplay"),
-                InlineKeyboardButton(text="❌ Disable", callback_data="disable_autoplay")
+                InlineKeyboardButton(text="✅ Enable", callback_data=f"set_ap_on_{m.chat.id}"),
+                InlineKeyboardButton(text="❌ Disable", callback_data=f"set_ap_off_{m.chat.id}")
             ],
             [
                 InlineKeyboardButton(text="🗑 Close", callback_data="close")
@@ -68,6 +62,40 @@ async def _autoplay(_, m: types.Message):
             "• Ensures smooth and uninterrupted listening.\n"
             "• Designed for a seamless music experience.",
         ),
-        reply_markup=autoplay_keyboard, # <-- Yahan local buttons set kar diye
+        reply_markup=autoplay_keyboard,
     )
+
+
+# 🛠 FIX 2: Ye naya handler add kiya hai jo un buttons ka kaam karega
+@app.on_callback_query(filters.regex(r"^set_ap_(on|off)_") & ~app.bl_users)
+async def handle_autoplay_buttons(_, query: types.CallbackQuery):
+    data = query.data.split("_")
+    action = data[2] # Ye 'on' ya 'off' check karega
+    chat_id = int(data[3])
+    
+    if action == "on":
+        await db.set_autoplay(chat_id, True)
+        status_msg = "🟢 ᴇɴᴀʙʟᴇᴅ"
+        alert_msg = "Autoplay Enabled!"
+    else:
+        await db.set_autoplay(chat_id, False)
+        status_msg = "🔴 ᴅɪsᴀʙʟᴇᴅ"
+        alert_msg = "Autoplay Disabled!"
+
+    await query.answer(alert_msg)
+    
+    try:
+        # Group me wahi tag wala message bhejega
+        await app.send_message(
+            chat_id=chat_id, 
+            text=f"ᴀᴜᴛᴏ-ᴘʟᴀʏ ʜᴀs ʙᴇᴇɴ {status_msg} ʙʏ {query.from_user.mention}"
+        )
+    except:
+        pass
+        
+    try:
+        # Kaam hone ke baad panel delete ho jayega
+        await query.message.delete()
+    except:
+        pass
     
