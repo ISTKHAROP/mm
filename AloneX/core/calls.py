@@ -1,24 +1,23 @@
-# Copyright (c) 2026 THE SHIV
+# Copyright (c) 2025 TheHamkerAlone
 # Licensed under the MIT License.
-# This file is part of MahiMusic
-# DEVELOPER - THE SHIV
+# This file is part of AloneXMusic
+# ALONE-CODER
 
+import asyncio
 from collections import defaultdict
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported)
-from pyrogram.errors import MessageIdInvalid, RPCError
+from pyrogram.errors import MessageIdInvalid
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
-# 🟢 Yahan `utils` import add kar diya gaya hai
 from AloneX import app, config, db, lang, logger, queue, userbot, yt
-from AloneX.helpers import Media, Track, buttons, thumb, utils, vclogger
+from AloneX.helpers import Media, Track, buttons, thumb, vclogger
 
 
-# FIX 1: PyTgCalls inherit karne ki zarurat nahi hai kyuki ye ek manager class hai.
-class TgCall:
+class TgCall(PyTgCalls):
     def __init__(self):
         self.clients = []
         self.history: dict[int, list[str]] = defaultdict(list)
@@ -52,6 +51,7 @@ class TgCall:
             await client.leave_call(chat_id, close=False)
         except:
             pass
+
 
     async def play_media(
         self,
@@ -93,14 +93,20 @@ class TgCall:
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
+                play_type = (
+                    _lang.get("play_type_video", "🎥 Video")
+                    if media.video
+                    else _lang.get("play_type_audio", "🎵 Audio")
+                )
                 text = _lang["play_media"].format(
                     media.url,
                     media.title,
                     media.duration,
                     media.user,
+                    play_type,
                 )
-                keyboard = buttons.controls(chat_id)
-                
+                autoplay_on = await db.get_autoplay(chat_id)
+                keyboard = buttons.controls(chat_id, _lang=_lang, autoplay_on=autoplay_on)
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(
@@ -109,22 +115,13 @@ class TgCall:
                         ),
                         reply_markup=keyboard,
                     )
-                # FIX 2: Text message ko Media me edit karne par Exception aayega, usko properly handle kiya
-                except Exception:
-                    try:
-                        await message.delete() # Purana text message delete karein
-                    except:
-                        pass
-                    
-                    # Naya media message send karein aur ID save karein
-                    new_msg = await app.send_photo(
+                except MessageIdInvalid:
+                    media.message_id = (await app.send_photo(
                         chat_id=chat_id,
                         photo=_thumb,
                         caption=text,
                         reply_markup=keyboard,
-                    )
-                    media.message_id = new_msg.id
-                    
+                    )).id
         except FileNotFoundError:
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             await self.play_next(chat_id)
@@ -141,6 +138,7 @@ class TgCall:
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
 
+
     async def replay(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
@@ -150,12 +148,28 @@ class TgCall:
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
 
+
+    async def _delete_later(self, chat_id: int, message_id: int, delay: int = 1) -> None:
+        try:
+            await asyncio.sleep(delay)
+            await app.delete_messages(chat_id=chat_id, message_ids=message_id, revoke=True)
+        except Exception:
+            pass
+
     async def play_next(self, chat_id: int) -> None:
         current = queue.get_current(chat_id)
         if current:
             history = self.history[chat_id]
             history.append(current.id)
             del history[:-20]
+
+            # the just-ended song's "Stream Initiated" card is no longer
+            # needed once the song finishes — clear it out of the group
+            # a second after it ends instead of leaving it sitting around.
+            if current.message_id:
+                asyncio.create_task(
+                    self._delete_later(chat_id, current.message_id, delay=1)
+                )
 
         # reset the prefetch guard now that this song's lifecycle has ended
         self.autoplay_prefetching.discard(chat_id)
@@ -203,20 +217,6 @@ class TgCall:
                     related.user = "Autoplay"
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
-                    
-                    # 🟢 YAHAN AUTOPLAY LOG TRIGGER HOGA 🟢
-                    try:
-                        chat_obj = await app.get_chat(chat_id)
-                        await utils.autoplay_log(
-                            chat=chat_obj,
-                            playing_title=media.title,
-                            playing_link=media.url,
-                            matched_with=current.title,
-                            upcoming_title="Autoplay will decide next..."
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to send autoplay log: {e}")
-
                 else:
                     await app.send_message(
                         chat_id=chat_id,
@@ -242,11 +242,11 @@ class TgCall:
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
 
+
     async def ping(self) -> float:
-        pings = [client.ping for client in self.clients if client.ping]
-        if not pings:
-            return 0.0
+        pings = [client.ping for client in self.clients]
         return round(sum(pings) / len(pings), 2)
+
 
     async def decorators(self, client: PyTgCalls) -> None:
         participant_update = getattr(types, "UpdatedGroupCallParticipant", None)
@@ -254,9 +254,8 @@ class TgCall:
         @client.on_update()
         async def update_handler(_, update: types.Update) -> None:
             if isinstance(update, types.StreamEnded):
-                # FIX 3: PyTgCalls (v3/ntgcalls) me update.stream_type nhi hota, isliye wo hata diya gaya hai.
-                await self.play_next(update.chat_id)
-                
+                if update.stream_type == types.StreamEnded.Type.AUDIO:
+                    await self.play_next(update.chat_id)
             elif isinstance(update, types.ChatUpdate):
                 if update.status in [
                     types.ChatUpdate.Status.KICKED,
@@ -264,12 +263,14 @@ class TgCall:
                     types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
                 ]:
                     await self.stop(update.chat_id)
-                    
             elif participant_update and isinstance(update, participant_update):
                 try:
                     if not await db.get_vc_logger(update.chat_id):
                         return
 
+                    # `action` lives on the update itself; `user_id` lives on
+                    # update.participant. Fall back defensively in case this
+                    # differs across pytgcalls versions.
                     action = getattr(update, "action", None)
                     if action is None:
                         action = getattr(update.participant, "action", None)
@@ -285,6 +286,7 @@ class TgCall:
                 except Exception as e:
                     logger.error(f"[VCLogger] Update handling error: {e}")
 
+
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
@@ -293,4 +295,3 @@ class TgCall:
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-                      
