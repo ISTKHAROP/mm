@@ -110,8 +110,9 @@ class Inline:
                 ]
             )
             
+            # 🛠 FIX: Text ko wapas normal kar diya, sirf color change hoga
             if autoplay_on is not None:
-                ap_text = "▶️ ᴀᴜᴛᴏ-ᴘʟᴀʏ : 🟢 ᴏɴ" if autoplay_on else "▶️ ᴀᴜᴛᴏ-ᴘʟᴀʏ : 🔴 ᴏғғ"
+                ap_text = "▶️ ᴀᴜᴛᴏ-ᴘʟᴀʏ" 
                 ap_style = ButtonStyle.SUCCESS if autoplay_on else ButtonStyle.DANGER
             else:
                 ap_text = "▶️ ᴀᴜᴛᴏ-ᴘʟᴀʏ"
@@ -120,7 +121,7 @@ class Inline:
             keyboard.append(
                 [
                     self.ikb(text=ap_text, callback_data=f"controls autoplay_toggle {chat_id}", style=ap_style),
-                    self.ikb(text="ᴄʟᴏɴᴇ-ᴍᴇ", url="https://t.me/SizzuMusicBot", style=style[2]), # Yahan pe username change kiya hai
+                    self.ikb(text="ᴄʟᴏɴᴇ-ᴍᴇ", url="https://t.me/SizzuMusicBot", style=style[2]), 
                 ]
             )
             
