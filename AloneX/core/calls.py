@@ -1,9 +1,8 @@
-# Copyright (c) 2025 TheHamkerAlone
+# Copyright (c) 2026 THE SHIV
 # Licensed under the MIT License.
-# This file is part of AloneXMusic
-# ALONE-CODER
+# This file is part of MahiMusic
+# DEVELOPER - THE SHIV
 
-import asyncio
 from collections import defaultdict
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
@@ -13,8 +12,9 @@ from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
+# 🟢 Yahan `utils` import add kar diya gaya hai
 from AloneX import app, config, db, lang, logger, queue, userbot, yt
-from AloneX.helpers import Media, Track, buttons, thumb, vclogger
+from AloneX.helpers import Media, Track, buttons, thumb, utils, vclogger
 
 
 class TgCall(PyTgCalls):
@@ -93,20 +93,13 @@ class TgCall(PyTgCalls):
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
-                play_type = (
-                    _lang.get("play_type_video", "🎥 Video")
-                    if media.video
-                    else _lang.get("play_type_audio", "🎵 Audio")
-                )
                 text = _lang["play_media"].format(
                     media.url,
                     media.title,
                     media.duration,
                     media.user,
-                    play_type,
                 )
-                autoplay_on = await db.get_autoplay(chat_id)
-                keyboard = buttons.controls(chat_id, _lang=_lang, autoplay_on=autoplay_on)
+                keyboard = buttons.controls(chat_id)
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(
@@ -149,27 +142,12 @@ class TgCall(PyTgCalls):
         await self.play_media(chat_id, msg, media)
 
 
-    async def _delete_later(self, chat_id: int, message_id: int, delay: int = 1) -> None:
-        try:
-            await asyncio.sleep(delay)
-            await app.delete_messages(chat_id=chat_id, message_ids=message_id, revoke=True)
-        except Exception:
-            pass
-
     async def play_next(self, chat_id: int) -> None:
         current = queue.get_current(chat_id)
         if current:
             history = self.history[chat_id]
             history.append(current.id)
             del history[:-20]
-
-            # the just-ended song's "Stream Initiated" card is no longer
-            # needed once the song finishes — clear it out of the group
-            # a second after it ends instead of leaving it sitting around.
-            if current.message_id:
-                asyncio.create_task(
-                    self._delete_later(chat_id, current.message_id, delay=1)
-                )
 
         # reset the prefetch guard now that this song's lifecycle has ended
         self.autoplay_prefetching.discard(chat_id)
@@ -217,6 +195,20 @@ class TgCall(PyTgCalls):
                     related.user = "Autoplay"
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
+                    
+                    # 🟢 YAHAN AUTOPLAY LOG TRIGGER HOGA 🟢
+                    try:
+                        chat_obj = await app.get_chat(chat_id)
+                        await utils.autoplay_log(
+                            chat=chat_obj,
+                            playing_title=media.title,
+                            playing_link=media.url,
+                            matched_with=current.title,
+                            upcoming_title="Autoplay will decide next..."
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send autoplay log: {e}")
+
                 else:
                     await app.send_message(
                         chat_id=chat_id,
