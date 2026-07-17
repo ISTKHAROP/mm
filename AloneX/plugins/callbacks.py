@@ -37,11 +37,24 @@ async def _controls(_, query: types.CallbackQuery):
     if action == "autoplay_toggle":
         new_state = not await db.get_autoplay(chat_id)
         await db.set_autoplay(chat_id, new_state)
+        
+        # 🛠 FIX: Button click par chota sa alert dikhane ke liye
         await query.answer(
             query.lang.get("autoplay_on", "Enabled")
             if new_state
             else query.lang.get("autoplay_off", "Disabled")
         )
+        
+        # 🛠 FIX: Group me message bhejne ka code (Jo tune maanga tha)
+        status_msg = "🟢 **ᴇɴᴀʙʟᴇᴅ**" if new_state else "🔴 **ᴅɪsᴀʙʟᴇᴅ**"
+        try:
+            await app.send_message(
+                chat_id=chat_id, 
+                text=f"▶️ **ᴀᴜᴛᴏ-ᴘʟᴀʏ ʜᴀs ʙᴇᴇɴ {status_msg} ʙʏ {query.from_user.mention}**"
+            )
+        except Exception:
+            pass
+            
         try:
             return await query.edit_message_reply_markup(
                 reply_markup=buttons.controls(
