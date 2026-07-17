@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported)
-from pyrogram.errors import MessageIdInvalid
+from pyrogram.errors import MessageIdInvalid, RPCError
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
@@ -17,7 +17,8 @@ from AloneX import app, config, db, lang, logger, queue, userbot, yt
 from AloneX.helpers import Media, Track, buttons, thumb, utils, vclogger
 
 
-class TgCall(PyTgCalls):
+# FIX 1: PyTgCalls inherit karne ki zarurat nahi hai kyuki ye ek manager class hai.
+class TgCall:
     def __init__(self):
         self.clients = []
         self.history: dict[int, list[str]] = defaultdict(list)
@@ -51,7 +52,6 @@ class TgCall(PyTgCalls):
             await client.leave_call(chat_id, close=False)
         except:
             pass
-
 
     async def play_media(
         self,
@@ -100,6 +100,7 @@ class TgCall(PyTgCalls):
                     media.user,
                 )
                 keyboard = buttons.controls(chat_id)
+                
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(
@@ -108,13 +109,22 @@ class TgCall(PyTgCalls):
                         ),
                         reply_markup=keyboard,
                     )
-                except MessageIdInvalid:
-                    media.message_id = (await app.send_photo(
+                # FIX 2: Text message ko Media me edit karne par Exception aayega, usko properly handle kiya
+                except Exception:
+                    try:
+                        await message.delete() # Purana text message delete karein
+                    except:
+                        pass
+                    
+                    # Naya media message send karein aur ID save karein
+                    new_msg = await app.send_photo(
                         chat_id=chat_id,
                         photo=_thumb,
                         caption=text,
                         reply_markup=keyboard,
-                    )).id
+                    )
+                    media.message_id = new_msg.id
+                    
         except FileNotFoundError:
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             await self.play_next(chat_id)
@@ -131,7 +141,6 @@ class TgCall(PyTgCalls):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
 
-
     async def replay(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
@@ -140,7 +149,6 @@ class TgCall(PyTgCalls):
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
-
 
     async def play_next(self, chat_id: int) -> None:
         current = queue.get_current(chat_id)
@@ -234,11 +242,11 @@ class TgCall(PyTgCalls):
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
 
-
     async def ping(self) -> float:
-        pings = [client.ping for client in self.clients]
+        pings = [client.ping for client in self.clients if client.ping]
+        if not pings:
+            return 0.0
         return round(sum(pings) / len(pings), 2)
-
 
     async def decorators(self, client: PyTgCalls) -> None:
         participant_update = getattr(types, "UpdatedGroupCallParticipant", None)
@@ -246,8 +254,9 @@ class TgCall(PyTgCalls):
         @client.on_update()
         async def update_handler(_, update: types.Update) -> None:
             if isinstance(update, types.StreamEnded):
-                if update.stream_type == types.StreamEnded.Type.AUDIO:
-                    await self.play_next(update.chat_id)
+                # FIX 3: PyTgCalls (v3/ntgcalls) me update.stream_type nhi hota, isliye wo hata diya gaya hai.
+                await self.play_next(update.chat_id)
+                
             elif isinstance(update, types.ChatUpdate):
                 if update.status in [
                     types.ChatUpdate.Status.KICKED,
@@ -255,14 +264,12 @@ class TgCall(PyTgCalls):
                     types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
                 ]:
                     await self.stop(update.chat_id)
+                    
             elif participant_update and isinstance(update, participant_update):
                 try:
                     if not await db.get_vc_logger(update.chat_id):
                         return
 
-                    # `action` lives on the update itself; `user_id` lives on
-                    # update.participant. Fall back defensively in case this
-                    # differs across pytgcalls versions.
                     action = getattr(update, "action", None)
                     if action is None:
                         action = getattr(update.participant, "action", None)
@@ -278,7 +285,6 @@ class TgCall(PyTgCalls):
                 except Exception as e:
                     logger.error(f"[VCLogger] Update handling error: {e}")
 
-
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
@@ -287,3 +293,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
+                      
