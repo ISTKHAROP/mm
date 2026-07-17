@@ -93,7 +93,7 @@ class TgCall(PyTgCalls):
                 media.time = 1
                 await db.add_call(chat_id)
                 
-                # 🛠 FIX 1: Play Type fix kar diya ("H" ki jagah ab properly Audio/Video likhega)
+                # 🛠 FIX: Play Type
                 play_type = "🎬 Video" if media.video else "🎧 Audio"
                 
                 text = _lang["play_media"].format(
@@ -104,7 +104,7 @@ class TgCall(PyTgCalls):
                     play_type, 
                 )
                 
-                # 🛠 FIX 2: Timer gayab tha, ab start me "00:00" se timer button add karega
+                # 🛠 FIX: Timer Initialization
                 start_timer = f"00:00 {media.duration}"
                 keyboard = buttons.controls(chat_id, timer=start_timer)
                 
@@ -179,29 +179,28 @@ class TgCall(PyTgCalls):
                 related = self.pending_autoplay.pop(chat_id, None)
 
                 if not related:
-                    notice = await app.send_message(
-                        chat_id=chat_id,
-                        text=_lang.get(
-                            "autoplay_searching",
-                            "🔎 Queue is empty — Autoplay is searching for a related song...",
-                        ),
-                    )
+                    # 1. Pehle bina koi message bheje chup-chap next gaana search karega
                     try:
                         related = await yt.get_related(current, self.history[chat_id])
                     except Exception as e:
                         logger.error(f"[Autoplay] Unexpected error for chat {chat_id}: {e}")
                         related = None
 
-                    try:
-                        await notice.delete()
-                    except:
-                        pass
-
                 if related:
                     related.user = "Autoplay"
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
                     
+                    # 2. NEXT aane wale gaane ka naam (35 characters tak limit kiya hai)
+                    short_title = media.title[:35] + "..." if len(media.title) > 35 else media.title
+                    
+                    # 3. Blockquote me Next song ka naam group me bhejega
+                    await app.send_message(
+                        chat_id=chat_id,
+                        text=f"<blockquote>▶️ <b>Aᴜᴛᴏᴘʟᴀʏ Nᴇxᴛ :</b>\n🎧 <i>{short_title}</i></blockquote>"
+                    )
+                    
+                    # 🟢 YAHAN AUTOPLAY LOG TRIGGER HOGA 🟢
                     try:
                         chat_obj = await app.get_chat(chat_id)
                         await utils.autoplay_log(
@@ -289,4 +288,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-      
+  
