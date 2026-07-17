@@ -2,22 +2,17 @@
 # Licensed under the MIT License.
 # This file is part of AloneXMusic
 
-
 import re
 import asyncio
-
-from pyrogram import enums, filters, types  # <-- ADDED enums HERE
-
+from pyrogram import enums, filters, types
 from AloneX import anon, app, db, lang, queue, tg, yt
 from AloneX.helpers import admin_check, buttons, can_manage_vc
-
 
 @app.on_callback_query(filters.regex("cancel_dl") & ~app.bl_users)
 @lang.language()
 async def cancel_dl(_, query: types.CallbackQuery):
     await query.answer()
     await tg.cancel(query)
-
 
 @app.on_callback_query(filters.regex("controls") & ~app.bl_users)
 @lang.language()
@@ -32,148 +27,49 @@ async def _controls(_, query: types.CallbackQuery):
         return await query.answer(query.lang["not_playing"], show_alert=True)
 
     if action == "status":
+        status = await db.get_playing(chat_id)
+        if status:
+            keyboard = buttons.controls(chat_id, timer=f"{status.played} {status.duration}", _lang=query.lang, autoplay_on=await db.get_autoplay(chat_id))
+            try: await query.edit_message_reply_markup(reply_markup=keyboard)
+            except: pass
         return await query.answer()
 
     if action == "autoplay_toggle":
         new_state = not await db.get_autoplay(chat_id)
         await db.set_autoplay(chat_id, new_state)
+        await query.answer(query.lang.get("autoplay_on", "Enabled") if new_state else query.lang.get("autoplay_off", "Disabled"))
         
-        # 🛠 FIX: Button click par chota sa alert dikhane ke liye
-        await query.answer(
-            query.lang.get("autoplay_on", "Enabled")
-            if new_state
-            else query.lang.get("autoplay_off", "Disabled")
-        )
-        
-        # 🛠 FIX: Group me message bhejne ka code (Jo tune maanga tha)
-        status_msg = "🟢 **ᴇɴᴀʙʟᴇᴅ**" if new_state else "🔴 **ᴅɪsᴀʙʟᴇᴅ**"
-        try:
-            await app.send_message(
-                chat_id=chat_id, 
-                text=f"▶️ **ᴀᴜᴛᴏ-ᴘʟᴀʏ ʜᴀs ʙᴇᴇɴ {status_msg} ʙʏ {query.from_user.mention}**"
-            )
-        except Exception:
-            pass
+        # 🛠 FIX: ▶️ aur ** dono hata diye gaye hain, ab text ekdam normal aayega
+        status_msg = "🟢 ᴇɴᴀʙʟᴇᴅ" if new_state else "🔴 ᴅɪsᴀʙʟᴇᴅ"
+        try: await app.send_message(chat_id=chat_id, text=f"ᴀᴜᴛᴏ-ᴘʟᴀʏ ʜᴀs ʙᴇᴇɴ {status_msg} ʙʏ {query.from_user.mention}")
+        except: pass
             
         try:
-            return await query.edit_message_reply_markup(
-                reply_markup=buttons.controls(
-                    chat_id, _lang=query.lang, autoplay_on=new_state
-                )
-            )
+            return await query.edit_message_reply_markup(reply_markup=buttons.controls(chat_id, _lang=query.lang, autoplay_on=new_state))
         except:
             return
 
     await query.answer(query.lang["processing"], show_alert=True)
 
-    if action == "pause":
-        if not await db.playing(chat_id):
-            return await query.answer(
-                query.lang["play_already_paused"], show_alert=True
-            )
-        await anon.pause(chat_id)
-        if qaction:
-            return await query.edit_message_reply_markup(
-                reply_markup=buttons.queue_markup(chat_id, query.lang["paused"], False)
-            )
-        status = query.lang["paused"]
-        reply = query.lang["play_paused"].format(user)
-
-    elif action == "resume":
-        if await db.playing(chat_id):
-            return await query.answer(query.lang["play_not_paused"], show_alert=True)
-        await anon.resume(chat_id)
-        if qaction:
-            return await query.edit_message_reply_markup(
-                reply_markup=buttons.queue_markup(chat_id, query.lang["playing"], True)
-            )
-        reply = query.lang["play_resumed"].format(user)
-
-    elif action == "skip":
-        await anon.play_next(chat_id)
-        status = query.lang["skipped"]
-        reply = query.lang["play_skipped"].format(user)
-
-    elif action == "force":
-        pos, media = queue.check_item(chat_id, args[3])
-        if not media or pos == -1:
-            return await query.edit_message_text(query.lang["play_expired"])
-
-        m_id = queue.get_current(chat_id).message_id
-        queue.force_add(chat_id, media, remove=pos)
-        try:
-            await app.delete_messages(
-                chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True
-            )
-            media.message_id = None
-        except:
-            pass
-
-        msg = await app.send_message(chat_id=chat_id, text=query.lang["play_next"])
-        if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
-        media.message_id = msg.id
-        return await anon.play_media(chat_id, msg, media)
-
-    elif action == "replay":
-        media = queue.get_current(chat_id)
-        media.user = user
-        await anon.replay(chat_id)
-        status = query.lang["replayed"]
-        reply = query.lang["play_replayed"].format(user)
-
-    elif action in ("seek_fwd", "seek_back"):
-        media = queue.get_current(chat_id)
-        if not media or not media.duration_sec:
-            return await query.answer(query.lang["play_seek_no_dur"], show_alert=True)
-
-        to_seek = 20
-        if action == "seek_back":
-            start_from = media.time - to_seek
-            if start_from < 1:
-                start_from = 1
-            stype = query.lang["backward"]
-        else:
-            start_from = media.time + to_seek
-            if start_from + 10 > media.duration_sec:
-                start_from = media.duration_sec - 5
-            stype = query.lang["forward"]
-
-        sent = await app.send_message(chat_id=chat_id, text=query.lang["play_seeking"])
-        await anon.play_media(chat_id, sent, media, start_from)
-        media.time = start_from
-        
-        # --- FIX: Safe editing for Photos/Text ---
-        if sent.photo or sent.video or sent.animation:
-            return await sent.edit_caption(
-                query.lang["play_seeked"].format(stype, start_from, user)
-            )
-        else:
-            return await sent.edit_text(
-                query.lang["play_seeked"].format(stype, start_from, user)
-            )
-
-    elif action == "stop":
-        await anon.stop(chat_id)
-        status = query.lang["stopped"]
-        reply = query.lang["play_stopped"].format(user)
+    # Action Handlers
+    if action == "pause": await anon.pause(chat_id); reply = query.lang["play_paused"].format(user)
+    elif action == "resume": await anon.resume(chat_id); reply = query.lang["play_resumed"].format(user)
+    elif action == "skip": await anon.play_next(chat_id); reply = query.lang["play_skipped"].format(user)
+    elif action == "stop": await anon.stop(chat_id); reply = query.lang["play_stopped"].format(user)
+    elif action == "replay": await anon.replay(chat_id); reply = query.lang["play_replayed"].format(user)
 
     try:
         if action in ["skip", "replay", "stop"]:
             await query.message.reply_text(reply, quote=False)
             await query.message.delete()
         else:
-            # --- FIX: Safely parse text or caption for Media Files ---
             original_text = query.message.caption.html if query.message.caption else query.message.text.html
-            mtext = re.sub(
-                r"\n\n<blockquote>.*?</blockquote>",
-                "",
-                original_text,
-                flags=re.DOTALL,
-            )
+            mtext = re.sub(r"\n\n<blockquote>.*?</blockquote>", "", original_text, flags=re.DOTALL)
+            
+            status = await db.get_playing(chat_id)
             keyboard = buttons.controls(
                 chat_id,
-                status=status if action != "resume" else None,
+                timer=f"{status.played} {status.duration}" if status else None,
                 _lang=query.lang,
                 autoplay_on=await db.get_autoplay(chat_id),
             )
@@ -194,7 +90,6 @@ async def _help(_, query: types.CallbackQuery):
     is_private = query.message.chat.type == enums.ChatType.PRIVATE
     has_media = bool(query.message.photo or query.message.video or query.message.animation)
 
-    # --- FIX: Unified function to smoothly edit message or photo caption in same chat ---
     async def edit_ui(new_text, new_markup):
         try:
             if has_media:
@@ -207,7 +102,6 @@ async def _help(_, query: types.CallbackQuery):
     if len(data) == 1:
         if not is_private:
             return await query.answer(url=f"https://t.me/{app.username}?start=help")
-        # Edit dynamically in PM
         return await edit_ui(query.lang["help_menu"], buttons.help_markup(query.lang))
 
     if data[1] == "back":
@@ -217,7 +111,6 @@ async def _help(_, query: types.CallbackQuery):
         if not is_private:
             return await query.answer(url=f"https://t.me/{app.username}?start=home")
         
-        # Load Start Message Text
         _text = query.lang["start_pm"].format(query.from_user.first_name, app.name)
         key = buttons.start_key(query.lang, True)
         return await edit_ui(_text, key)
@@ -229,7 +122,6 @@ async def _help(_, query: types.CallbackQuery):
         except:
             return
 
-    # Specific Help categories
     await edit_ui(query.lang[f"help_{data[1]}"], buttons.help_markup(query.lang, True))
 
 
@@ -254,27 +146,11 @@ async def _settings_cb(_, query: types.CallbackQuery):
         await db.set_play_mode(chat_id, _admin)
         _admin = not _admin
     
-    # Check if message is media to avoid crashes
+    markup = buttons.settings_markup(query.lang, _admin, _delete, _language, chat_id)
     if query.message.photo or query.message.video or query.message.animation:
-        await query.edit_message_reply_markup(
-            reply_markup=buttons.settings_markup(
-                query.lang,
-                _admin,
-                _delete,
-                _language,
-                chat_id,
-            )
-        )
+        await query.edit_message_reply_markup(reply_markup=markup)
     else:
-        await query.edit_message_reply_markup(
-            reply_markup=buttons.settings_markup(
-                query.lang,
-                _admin,
-                _delete,
-                _language,
-                chat_id,
-            )
-        )
+        await query.edit_message_reply_markup(reply_markup=markup)
 
 
 async def _delete_later(message: types.Message) -> None:
@@ -304,10 +180,8 @@ async def _autoplay_panel(_, query: types.CallbackQuery):
             "🎶 Sit back & enjoy the music.",
         )
         markup = buttons.autoplay_info_markup(query.lang)
-        if has_media:
-            return await query.edit_message_caption(caption=text, reply_markup=markup)
-        else:
-            return await query.edit_message_text(text=text, reply_markup=markup)
+        if has_media: return await query.edit_message_caption(caption=text, reply_markup=markup)
+        else: return await query.edit_message_text(text=text, reply_markup=markup)
 
     elif action == "back":
         await query.answer()
@@ -319,27 +193,20 @@ async def _autoplay_panel(_, query: types.CallbackQuery):
             "• Designed for a seamless music experience.",
         )
         markup = buttons.autoplay_markup(query.lang)
-        if has_media:
-            return await query.edit_message_caption(caption=text, reply_markup=markup)
-        else:
-            return await query.edit_message_text(text=text, reply_markup=markup)
+        if has_media: return await query.edit_message_caption(caption=text, reply_markup=markup)
+        else: return await query.edit_message_text(text=text, reply_markup=markup)
 
     elif action == "close":
         await query.answer()
-        try:
-            await query.message.delete()
-        except:
-            pass
+        try: await query.message.delete()
+        except: pass
         return
 
     elif action == "enable":
         await db.set_autoplay(chat_id, True)
         await query.answer(query.lang.get("autoplay_on", "Enabled"))
-
-        try:
-            await query.message.delete()
-        except:
-            pass
+        try: await query.message.delete()
+        except: pass
 
         msg = await app.send_message(
             chat_id=chat_id,
@@ -347,4 +214,4 @@ async def _autoplay_panel(_, query: types.CallbackQuery):
         )
         asyncio.create_task(_delete_later(msg))
         return
-            
+    
