@@ -6,6 +6,7 @@
 import asyncio
 
 from pyrogram import filters, types
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton # <-- Yahan buttons import kiye
 
 from AloneX import app, db, lang
 from AloneX.helpers import buttons
@@ -45,6 +46,20 @@ async def _autoplay(_, m: types.Message):
         return
 
     # bare /autoplay or /autoplay on -> show the panel
+    
+    # 🛠 YAHAN FIX HAI: Humne direct keyboard yahi bana diya taaki buttons.py ka error na aaye.
+    autoplay_keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(text="✅ Enable", callback_data="enable_autoplay"),
+                InlineKeyboardButton(text="❌ Disable", callback_data="disable_autoplay")
+            ],
+            [
+                InlineKeyboardButton(text="🗑 Close", callback_data="close")
+            ]
+        ]
+    )
+
     await m.reply_text(
         m.lang.get(
             "autoplay_panel_title",
@@ -53,5 +68,6 @@ async def _autoplay(_, m: types.Message):
             "• Ensures smooth and uninterrupted listening.\n"
             "• Designed for a seamless music experience.",
         ),
-        reply_markup=buttons.autoplay_markup(m.lang),
+        reply_markup=autoplay_keyboard, # <-- Yahan local buttons set kar diye
     )
+    
