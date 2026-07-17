@@ -262,6 +262,7 @@ async def play_hndlr(
                     file.title,
                     file.duration,
                     m.from_user.mention,
+                    m.chat.title, # <-- YAHAN ADD KIYA HAI {5} INDEX KA FIX
                 ),
                 reply_markup=buttons.play_queued(
                     m.chat.id, file.id, m.lang["play_now"]
@@ -304,3 +305,4 @@ async def play_hndlr(
         chat_id=m.chat.id,
         text=m.lang["playlist_queued"].format(len(tracks)) + added,
 )
+    
