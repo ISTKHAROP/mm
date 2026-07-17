@@ -93,12 +93,16 @@ class TgCall(PyTgCalls):
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
+                
+                # 🛠 YAHAN FIX KIYA HAI: message.chat.title add kar diya
                 text = _lang["play_media"].format(
                     media.url,
                     media.title,
                     media.duration,
                     media.user,
+                    message.chat.title, 
                 )
+                
                 keyboard = buttons.controls(chat_id)
                 try:
                     await message.edit_media(
@@ -287,3 +291,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
+                  
