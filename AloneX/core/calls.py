@@ -12,7 +12,6 @@ from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
-# 🟢 Yahan `utils` import add kar diya gaya hai
 from AloneX import app, config, db, lang, logger, queue, userbot, yt
 from AloneX.helpers import Media, Track, buttons, thumb, utils, vclogger
 
@@ -94,16 +93,21 @@ class TgCall(PyTgCalls):
                 media.time = 1
                 await db.add_call(chat_id)
                 
-                # 🛠 YAHAN FIX KIYA HAI: message.chat.title add kar diya
+                # 🛠 FIX 1: Play Type fix kar diya ("H" ki jagah ab properly Audio/Video likhega)
+                play_type = "🎬 Video" if media.video else "🎧 Audio"
+                
                 text = _lang["play_media"].format(
                     media.url,
                     media.title,
                     media.duration,
                     media.user,
-                    message.chat.title, 
+                    play_type, 
                 )
                 
-                keyboard = buttons.controls(chat_id)
+                # 🛠 FIX 2: Timer gayab tha, ab start me "00:00" se timer button add karega
+                start_timer = f"00:00 {media.duration}"
+                keyboard = buttons.controls(chat_id, timer=start_timer)
+                
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(
@@ -172,8 +176,6 @@ class TgCall(PyTgCalls):
             if current and isinstance(current, Track) and await db.get_autoplay(chat_id):
                 _lang = await lang.get_lang(chat_id)
 
-                # fast path: a track was already searched & downloaded in the
-                # background (~30s before this song ended) — instant, no lag
                 related = self.pending_autoplay.pop(chat_id, None)
 
                 if not related:
@@ -200,7 +202,6 @@ class TgCall(PyTgCalls):
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
                     
-                    # 🟢 YAHAN AUTOPLAY LOG TRIGGER HOGA 🟢
                     try:
                         chat_obj = await app.get_chat(chat_id)
                         await utils.autoplay_log(
@@ -264,9 +265,6 @@ class TgCall(PyTgCalls):
                     if not await db.get_vc_logger(update.chat_id):
                         return
 
-                    # `action` lives on the update itself; `user_id` lives on
-                    # update.participant. Fall back defensively in case this
-                    # differs across pytgcalls versions.
                     action = getattr(update, "action", None)
                     if action is None:
                         action = getattr(update.participant, "action", None)
@@ -291,4 +289,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-                  
+      
