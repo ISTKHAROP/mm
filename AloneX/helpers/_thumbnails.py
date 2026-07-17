@@ -5,11 +5,12 @@
 import os
 import asyncio
 import numpy as np
+import re
 import aiohttp
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 from collections import Counter
 
-# FIXED IMPORTS (Capital 'A' to prevent Heroku crashes)
+# 🛠 FIX: ishu ki jagah AloneX rakha hai taaki Heroku par crash na ho
 from AloneX import config
 from AloneX.helpers import Track
 
@@ -33,9 +34,8 @@ def safe_font(path, size):
 class Thumbnail:
     def __init__(self):
         self.size = (1280, 720)
-        # Font sizes thode badhaye hain better look ke liye
-        self.font_title = safe_font(FONT_TITLE_PATH, 32)
-        self.font_info = safe_font(FONT_INFO_PATH, 24)
+        self.font_title = safe_font(FONT_TITLE_PATH, 26)
+        self.font_info = safe_font(FONT_INFO_PATH, 20)
 
     async def start(self):
         os.makedirs("cache", exist_ok=True)
@@ -76,7 +76,6 @@ class Thumbnail:
             os.makedirs("cache", exist_ok=True)
             temp = f"cache/temp_{song.id}.jpg"
             final_path = f"cache/{song.id}.png"
-            
             if os.path.exists(final_path):
                 return final_path
 
@@ -84,11 +83,6 @@ class Thumbnail:
             
             try:
                 src = Image.open(temp).convert("RGBA")
-                # Enhance colors and contrast for higher quality thumbnail
-                enhancer = ImageEnhance.Color(src)
-                src = enhancer.enhance(1.2)
-                enhancer = ImageEnhance.Contrast(src)
-                src = enhancer.enhance(1.05)
             except Exception:
                 try:
                     src = Image.new("RGBA", (1280, 720), (30, 30, 30, 255))
@@ -110,10 +104,10 @@ class Thumbnail:
                 bg = src.crop((0, offset, src.width, offset + new_h))
 
             bg = bg.resize((W, H), Image.Resampling.LANCZOS)
-            
-            # Blur radius thoda badhaya aur overlay dark kiya better focus ke liye
-            bg = bg.filter(ImageFilter.GaussianBlur(30))
-            bg_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 130))
+            bg = bg.filter(ImageFilter.GaussianBlur(25))
+
+            # Darken slightly
+            bg_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 100))
             bg = Image.alpha_composite(bg, bg_overlay)
 
             # 2. LOAD TEMPLATE & extract UI with soft alpha
@@ -138,15 +132,14 @@ class Thumbnail:
             cover_w, cover_h = 512, 512
             cover_radius = 38
 
-            # Richer and smoother drop shadow
             shadow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
             shadow_draw = ImageDraw.Draw(shadow_layer)
             shadow_draw.rounded_rectangle(
-                (cover_x + 8, cover_y + 12, cover_x + cover_w + 8, cover_y + cover_h + 12),
+                (cover_x + 6, cover_y + 8, cover_x + cover_w + 6, cover_y + cover_h + 8),
                 radius=cover_radius + 4,
-                fill=(0, 0, 0, 180),
+                fill=(0, 0, 0, 140),
             )
-            shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(25))
+            shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(18))
             bg = Image.alpha_composite(bg, shadow_layer)
 
             cover_resized = src.resize((cover_w, cover_h), Image.Resampling.LANCZOS)
@@ -154,15 +147,12 @@ class Thumbnail:
             ImageDraw.Draw(cover_mask).rounded_rectangle(
                 (0, 0, cover_w, cover_h), radius=cover_radius, fill=255
             )
-            
-            # Anti-aliasing trick for smoother corner mask
-            cover_mask = cover_mask.filter(ImageFilter.SMOOTH_MORE)
             bg.paste(cover_resized, (cover_x, cover_y), cover_mask)
 
             # 4. ADD TEXT 
             draw = ImageDraw.Draw(bg)
             text_x = 715
-            text_max_w = 420
+            text_max_w = 320
 
             def ellipsize(s, font, max_w):
                 if draw.textbbox((0, 0), s, font=font)[2] <= max_w:
@@ -179,23 +169,16 @@ class Thumbnail:
                         hi = mid - 1
                 return best
 
-            # Helper function text ko shadow ke sath draw karne ke liye
-            def draw_text_with_shadow(draw, position, text, font, fill, shadow_fill=(0, 0, 0, 200), offset=(2, 2)):
-                x, y = position
-                draw.text((x + offset[0], y + offset[1]), text, fill=shadow_fill, font=font)
-                draw.text((x, y), text, fill=fill, font=font)
-
             title_str = ellipsize(unidecode(str(song.title)), self.font_title, text_max_w)
-            title_y = cover_y + 20
-            draw_text_with_shadow(draw, (text_x, title_y), title_str, self.font_title, fill=(255, 255, 255, 255))
+            title_y = cover_y + 12
+            draw.text((text_x, title_y), title_str, fill=(255, 255, 255, 255), font=self.font_title)
 
             artist_str = ellipsize(unidecode(str(song.channel_name)), self.font_info, text_max_w + 60)
-            artist_y = title_y + 55
-            draw_text_with_shadow(draw, (text_x, artist_y), artist_str, self.font_info, fill=(220, 220, 220, 255))
+            artist_y = title_y + 40
+            draw.text((text_x, artist_y), artist_str, fill=(200, 200, 200, 255), font=self.font_info)
             
             out = bg.convert("RGB")
-            # optimize=True to keep PNG size smaller but high quality
-            out.save(final_path, "PNG", optimize=True)
+            out.save(final_path, "PNG")
 
             try:
                 if os.path.exists(temp):
@@ -208,4 +191,4 @@ class Thumbnail:
         except Exception as e:
             print(f"Error: {e}")
             return config.DEFAULT_THUMB
-                    
+            
