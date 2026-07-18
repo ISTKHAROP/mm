@@ -1,7 +1,6 @@
-# Copyright (c) 2026 THE SHIV
+# Copyright (c) 2026 TheHamkerAlone
 # Licensed under the MIT License.
-# This file is part of MahiMusic
-# DEVELOPER - THE SHIV
+# This file is part of AloneXMusic
 
 import asyncio
 import os
@@ -39,8 +38,7 @@ class TgCall(PyTgCalls):
             return
         self.autoplay_prefetching.add(chat_id)
         try:
-            # 🚀 FIX: Yahan se 3 second ka wait hata diya hai! 
-            # Ab play hote hi turant background me download shuru hoga.
+            # Turant background me download shuru hoga (no 3 sec delay)
             try:
                 q = queue.get(chat_id)
                 if q and isinstance(q, list) and len(q) > 1:
@@ -135,7 +133,6 @@ class TgCall(PyTgCalls):
                     active_msg = await app.send_photo(chat_id=chat_id, photo=_thumb, caption=text, reply_markup=keyboard)
                     media.message_id = active_msg.id
                 
-                # Turant background me download
                 asyncio.create_task(self._prefetch_next(chat_id))
 
         except Exception:
@@ -152,7 +149,8 @@ class TgCall(PyTgCalls):
 
             history = self.history[chat_id]
             history.append(current.id)
-            del history[:-20]
+            # 🚀 NAYA FIX: Memory badha di, ab 100 gaano tak repeat nahi marega
+            del history[:-100]
 
         self.autoplay_prefetching.discard(chat_id)
         media = queue.get_next(chat_id)
@@ -240,4 +238,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-          
+                      
