@@ -4,6 +4,7 @@
 # DEVELOPER - THE SHIV
 
 import asyncio
+import os  # 🚀 NAYA: File delete karne ke liye
 from collections import defaultdict
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
@@ -79,6 +80,14 @@ class TgCall(PyTgCalls):
         client = await db.get_assistant(chat_id)
         self.autoplay_failures[chat_id] = 0
         try:
+            # 🚀 FIX: Stop karne par current gaane ka file delete karna
+            current = queue.get_current(chat_id)
+            if current and current.file_path and os.path.exists(current.file_path):
+                try:
+                    os.remove(current.file_path)
+                except Exception:
+                    pass
+
             queue.clear(chat_id)
             await db.remove_call(chat_id)
         except:
@@ -134,6 +143,13 @@ class TgCall(PyTgCalls):
     async def play_next(self, chat_id: int) -> None:
         current = queue.get_current(chat_id)
         if current:
+            # 🚀 FIX: Gaana khatam ya skip hone par file ko storage se delete karna
+            try:
+                if current.file_path and os.path.exists(current.file_path):
+                    os.remove(current.file_path)
+            except Exception:
+                pass
+
             history = self.history[chat_id]
             history.append(current.id)
             del history[:-20]
@@ -163,38 +179,9 @@ class TgCall(PyTgCalls):
                     related.user = "Autoplay"
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
-                    short_title = media.title[:45] + "..." if len(media.title) > 45 else media.title
-                    matched_title = current.title[:45] + "..." if current and current.title else "Unknown Track"
-                    
-                    # 1. Chat me normal notice 
+                    short_title = media.title[:35] + "..." if len(media.title) > 35 else media.title
                     notice = await app.send_message(chat_id=chat_id, text=f"<blockquote>▶️ <b>Aᴜᴛᴏᴘʟᴀʏ Nᴇxᴛ :</b>\n🎧 <a href='{media.url}'><i>{short_title}</i></a></blockquote>", disable_web_page_preview=True)
                     asyncio.create_task(_delete_msg(notice, 6))
-
-                    # 2. LOGGER GROUP ME DETAILED LOG (As per your Screenshot)
-                    try:
-                        chat_info = await app.get_chat(chat_id)
-                        chat_title = chat_info.title
-                    except Exception:
-                        chat_title = "Unknown Chat"
-
-                    log_text = (
-                        f"<blockquote><b>🔁 AUTO-PLAY TRACK STARTED</b>\n\n"
-                        f"<b>🥀 GROUP :</b> {chat_title} [{chat_id}]\n"
-                        f"<b>🎵 PLAYING :</b> <a href='{media.url}'>{short_title}</a>\n"
-                        f"<b>🔗 MATCHED WITH :</b> {matched_title}\n"
-                        f"<b>⏭ UPCOMING :</b> Autoplay will decide next...</blockquote>"
-                    )
-                    
-                    try:
-                        if hasattr(config, "LOGGER_ID") and config.LOGGER_ID:
-                            await app.send_message(
-                                chat_id=config.LOGGER_ID, 
-                                text=log_text, 
-                                disable_web_page_preview=True
-                            )
-                    except Exception:
-                        pass
-                    # ----------------------------------------------------
 
             if not media:
                 return await self.stop(chat_id)
@@ -253,4 +240,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-                  
+      
