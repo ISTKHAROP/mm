@@ -4,7 +4,7 @@
 # DEVELOPER - THE SHIV
 
 import asyncio
-import os  # 🚀 NAYA: File delete karne ke liye
+import os
 from collections import defaultdict
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
@@ -39,7 +39,8 @@ class TgCall(PyTgCalls):
             return
         self.autoplay_prefetching.add(chat_id)
         try:
-            await asyncio.sleep(3) 
+            # 🚀 FIX: Yahan se 3 second ka wait hata diya hai! 
+            # Ab play hote hi turant background me download shuru hoga.
             try:
                 q = queue.get(chat_id)
                 if q and isinstance(q, list) and len(q) > 1:
@@ -80,7 +81,6 @@ class TgCall(PyTgCalls):
         client = await db.get_assistant(chat_id)
         self.autoplay_failures[chat_id] = 0
         try:
-            # 🚀 FIX: Stop karne par current gaane ka file delete karna
             current = queue.get_current(chat_id)
             if current and current.file_path and os.path.exists(current.file_path):
                 try:
@@ -135,6 +135,7 @@ class TgCall(PyTgCalls):
                     active_msg = await app.send_photo(chat_id=chat_id, photo=_thumb, caption=text, reply_markup=keyboard)
                     media.message_id = active_msg.id
                 
+                # Turant background me download
                 asyncio.create_task(self._prefetch_next(chat_id))
 
         except Exception:
@@ -143,7 +144,6 @@ class TgCall(PyTgCalls):
     async def play_next(self, chat_id: int) -> None:
         current = queue.get_current(chat_id)
         if current:
-            # 🚀 FIX: Gaana khatam ya skip hone par file ko storage se delete karna
             try:
                 if current.file_path and os.path.exists(current.file_path):
                     os.remove(current.file_path)
@@ -240,4 +240,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-      
+          
