@@ -12,32 +12,33 @@ class VCLogger:
     def __init__(self):
         self.user_cache: dict[tuple, tuple] = {}
         self.join_count: dict[tuple, int] = {}
+        # 🚀 NAYA: Jo groups log off karenge unki ID yahan save hogi
+        self.disabled_chats: set = set() 
 
     async def _get_user_info(self, chat_id: int, user_id: int) -> tuple:
-        """Returns (name, username, role) for a participant, cached per chat."""
         key = (chat_id, user_id)
         if key in self.user_cache:
             return self.user_cache[key]
 
-        name = "User"
-        username = "Ignored"
-        role = "Member"
+        name = "ᴜsᴇʀ"
+        username = "ɪɢɴᴏʀᴇᴅ"
+        role = "ᴍᴇᴍʙᴇʀ"
 
         try:
             member = await app.get_chat_member(chat_id, user_id)
             if member:
                 if member.user:
                     user = member.user
-                    name = user.first_name or "User"
+                    name = user.first_name or "ᴜsᴇʀ"
                     if user.last_name:
                         name += f" {user.last_name}"
-                    username = f"@{user.username}" if user.username else "Ignored"
+                    username = f"@{user.username}" if user.username else "ɪɢɴᴏʀᴇᴅ"
 
                 if member.status in (
                     enums.ChatMemberStatus.OWNER,
                     enums.ChatMemberStatus.ADMINISTRATOR,
                 ):
-                    role = "Admin"
+                    role = "ᴀᴅᴍɪɴ"
         except Exception:
             pass
 
@@ -57,30 +58,36 @@ class VCLogger:
             return None
 
     async def _send(self, chat_id: int, user_id: int, joined: bool) -> None:
+        # 🚀 NAYA: Agar group ka admin isko OFF kar chuka hai, toh return kar do (log mat bhejo)
+        if chat_id in self.disabled_chats:
+            return
+
         name, username, role = await self._get_user_info(chat_id, user_id)
         mention = f'<a href="tg://user?id={user_id}">{name}</a>'
-        tag = "#JoinVideoChat" if joined else "#LeaveVideoChat"
-        action = f"Joined [{role}]" if joined else f"Left [{role}]"
+        
+        tag = "🟢 **#ᴊᴏɪɴ_ᴠɪᴅᴇᴏ_ᴄʜᴀᴛ**" if joined else "🔴 **#ʟᴇᴀᴠᴇ_ᴠɪᴅᴇᴏ_ᴄʜᴀᴛ**"
+        action = f"ᴊᴏɪɴᴇᴅ  [ {role} ]" if joined else f"ʟᴇғᴛ  [ {role} ]"
 
-        text = (
-            f"{tag}\n\n"
-            f"<blockquote>Name ➛ {mention}\n"
-            f"Id ➛ <code>{user_id}</code>\n"
-            f"Username ➛ {username}\n"
-            f"Action ➛ {action}</blockquote>"
+        details = (
+            f"**» ɴᴀᴍᴇ :** {mention}\n"
+            f"**» ɪᴅ :** <code>{user_id}</code>\n"
+            f"**» ᴜsᴇʀɴᴀᴍᴇ :** {username}\n"
+            f"**» ᴀᴄᴛɪᴏɴ :** {action}"
         )
 
         reply_markup = None
         if joined:
             key = (chat_id, user_id)
             self.join_count[key] = self.join_count.get(key, 0) + 1
-            text += f"\n🔄 Join Count ➛ {self.join_count[key]}"
+            details += f"\n**» ᴊᴏɪɴ ᴄᴏᴜɴᴛ :** {self.join_count[key]}"
 
             vc_link = await self._get_vc_link(chat_id)
             if vc_link:
                 reply_markup = types.InlineKeyboardMarkup(
-                    [[types.InlineKeyboardButton(text="Join Live Vc 📶", url=vc_link)]]
+                    [[types.InlineKeyboardButton(text="ᴊᴏɪɴ ʟɪᴠᴇ ᴠᴄ 📶", url=vc_link)]]
                 )
+
+        text = f"{tag}\n\n<blockquote>{details}</blockquote>"
 
         try:
             await app.send_message(chat_id, text, reply_markup=reply_markup)
@@ -98,3 +105,7 @@ class VCLogger:
             del self.user_cache[key]
         for key in [k for k in self.join_count if k[0] == chat_id]:
             del self.join_count[key]
+
+# Hame iska ek instance banakar rakhna hoga jo command mein import ho sake
+vc_log_instance = VCLogger()
+        
