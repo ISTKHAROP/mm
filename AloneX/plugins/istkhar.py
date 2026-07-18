@@ -2,9 +2,7 @@
 # Licensed under the MIT License.
 # This file is part of AloneXMusic
 
-
 from pyrogram import filters, types
-
 from AloneX import app
 
 
@@ -21,12 +19,11 @@ async def _vc_invited(_, message: types.Message):
     if not invited:
         return
 
-    text = (
-        f"{message.from_user.mention} Iɴᴠɪᴛᴇᴅ "
-        f"{', '.join(invited)} Tᴏ Tʜᴇ Vɪᴅᴇᴏ Cʜᴀᴛ."
-    )
+    # 🚀 NAYA: Screenshot jaisa stylish font aur emoji
+    text = f"📢 {message.from_user.mention} IηvιтєD {', '.join(invited)} . Tσ Vc 😌"
 
     try:
         await message.reply(text)
     except Exception:
         pass
+        
