@@ -35,7 +35,7 @@ class Inline:
         random.shuffle(styles)
         return styles
 
-    # 🎵 Custom Progress Bar Generator (Fixed Timer Stuck Issue)
+# 🎵 Custom Progress Bar Generator 
     def get_progress_bar(self, played_str: str, dur_str: str) -> str:
         played_sec = time_to_seconds(str(played_str))
         if str(dur_str).lower() in ["live", "unknown", "0", "00:00"]:
@@ -51,14 +51,13 @@ class Inline:
             
         filled_blocks = min(max(filled_blocks, 0), total_blocks)
         
-        # FIX: autoupdate.py looks for "▬" to update the timer. 
-        # So we MUST include at least one "▬" even at 00:00.
+        # Smooth progress bar with music note 🎵 leading the way
         if filled_blocks == 0:
-            bar = "▬🎵" + "▭" * (total_blocks - 2)
+            bar = "🎵" + "▱" * (total_blocks - 1)
         elif filled_blocks == total_blocks:
-            bar = "▬" * (total_blocks - 1) + "🎵"
+            bar = "▰" * (total_blocks - 1) + "🎵"
         else:
-            bar = "▬" * filled_blocks + "🎵" + "▭" * (total_blocks - filled_blocks - 1)
+            bar = "▰" * filled_blocks + "🎵" + "▱" * (total_blocks - filled_blocks - 1)
             
         return bar
 
