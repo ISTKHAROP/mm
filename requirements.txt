@@ -12,3 +12,4 @@ python-dotenv~=1.2.1
 yt-dlp[default]>=2026.3.17
 static-ffmpeg
 numpy
+motor
