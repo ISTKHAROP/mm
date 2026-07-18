@@ -1,9 +1,9 @@
-# Copyright (c) 2026 TheHamkerAlone
+# Copyright (c) 2026 THE SHIV
 # Licensed under the MIT License.
-# This file is part of AloneXMusic
+# This file is part of MahiMusic
+# DEVELOPER - THE SHIV
 
 import asyncio
-import os
 from collections import defaultdict
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
@@ -38,13 +38,14 @@ class TgCall(PyTgCalls):
             return
         self.autoplay_prefetching.add(chat_id)
         try:
-            # Turant background me download shuru hoga (no 3 sec delay)
+            await asyncio.sleep(3) 
             try:
                 q = queue.get(chat_id)
                 if q and isinstance(q, list) and len(q) > 1:
                     next_track = q[1]
-                    if not next_track.file_path:
-                        next_track.file_path = await yt.download(next_track.id, video=next_track.video)
+                    # ✅ MEMORY FIX: Removed background downloading
+                    # if not next_track.file_path:
+                    #     next_track.file_path = await yt.download(next_track.id, video=next_track.video)
                     return 
             except Exception:
                 pass
@@ -54,7 +55,8 @@ class TgCall(PyTgCalls):
                 if current and isinstance(current, Track):
                     related = await yt.get_related(current, self.history[chat_id])
                     if related:
-                        related.file_path = await yt.download(related.id, video=related.video)
+                        # ✅ MEMORY FIX: Removed background downloading for autoplay
+                        # related.file_path = await yt.download(related.id, video=related.video)
                         self.pending_autoplay[chat_id] = related
         except Exception:
             pass
@@ -79,13 +81,6 @@ class TgCall(PyTgCalls):
         client = await db.get_assistant(chat_id)
         self.autoplay_failures[chat_id] = 0
         try:
-            current = queue.get_current(chat_id)
-            if current and current.file_path and os.path.exists(current.file_path):
-                try:
-                    os.remove(current.file_path)
-                except Exception:
-                    pass
-
             queue.clear(chat_id)
             await db.remove_call(chat_id)
         except:
@@ -131,7 +126,7 @@ class TgCall(PyTgCalls):
                     active_msg = await message.edit_media(media=InputMediaPhoto(media=_thumb, caption=text), reply_markup=keyboard)
                 except MessageIdInvalid:
                     active_msg = await app.send_photo(chat_id=chat_id, photo=_thumb, caption=text, reply_markup=keyboard)
-                    media.message_id = active_msg.id
+                media.message_id = active_msg.id
                 
                 asyncio.create_task(self._prefetch_next(chat_id))
 
@@ -141,16 +136,9 @@ class TgCall(PyTgCalls):
     async def play_next(self, chat_id: int) -> None:
         current = queue.get_current(chat_id)
         if current:
-            try:
-                if current.file_path and os.path.exists(current.file_path):
-                    os.remove(current.file_path)
-            except Exception:
-                pass
-
             history = self.history[chat_id]
             history.append(current.id)
-            # 🚀 NAYA FIX: Memory badha di, ab 100 gaano tak repeat nahi marega
-            del history[:-100]
+            del history[:-20]
 
         self.autoplay_prefetching.discard(chat_id)
         media = queue.get_next(chat_id)
@@ -177,9 +165,38 @@ class TgCall(PyTgCalls):
                     related.user = "Autoplay"
                     queue.add(chat_id, related)
                     media = queue.get_current(chat_id)
-                    short_title = media.title[:35] + "..." if len(media.title) > 35 else media.title
+                    short_title = media.title[:45] + "..." if len(media.title) > 45 else media.title
+                    matched_title = current.title[:45] + "..." if current and current.title else "Unknown Track"
+                    
+                    # 1. Chat me normal notice 
                     notice = await app.send_message(chat_id=chat_id, text=f"<blockquote>▶️ <b>Aᴜᴛᴏᴘʟᴀʏ Nᴇxᴛ :</b>\n🎧 <a href='{media.url}'><i>{short_title}</i></a></blockquote>", disable_web_page_preview=True)
                     asyncio.create_task(_delete_msg(notice, 6))
+
+                    # 2. LOGGER GROUP ME DETAILED LOG (As per your Screenshot)
+                    try:
+                        chat_info = await app.get_chat(chat_id)
+                        chat_title = chat_info.title
+                    except Exception:
+                        chat_title = "Unknown Chat"
+
+                    log_text = (
+                        f"<blockquote><b>🔁 AUTO-PLAY TRACK STARTED</b>\n\n"
+                        f"<b>🥀 GROUP :</b> {chat_title} [{chat_id}]\n"
+                        f"<b>🎵 PLAYING :</b> <a href='{media.url}'>{short_title}</a>\n"
+                        f"<b>🔗 MATCHED WITH :</b> {matched_title}\n"
+                        f"<b>⏭ UPCOMING :</b> Autoplay will decide next...</blockquote>"
+                    )
+                    
+                    try:
+                        if hasattr(config, "LOGGER_ID") and config.LOGGER_ID:
+                            await app.send_message(
+                                chat_id=config.LOGGER_ID, 
+                                text=log_text, 
+                                disable_web_page_preview=True
+                            )
+                    except Exception:
+                        pass
+                    # ----------------------------------------------------
 
             if not media:
                 return await self.stop(chat_id)
@@ -238,4 +255,3 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-                      
