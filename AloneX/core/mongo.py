@@ -1,10 +1,11 @@
-# Copyright (c) 2025 TheHamkerAlone
+# Copyright (c) 2026 THE SHIV
 # Licensed under the MIT License.
-# This file is part of AloneXMusic
-#ALONE-CODER
+# This file is part of MahiMusic
+# DEVELOPER - THE SHIV
 
 from random import randint
 from time import time
+from datetime import datetime
 
 from pymongo import AsyncMongoClient
 
@@ -45,12 +46,11 @@ class MongoDB:
         self.users = []
         self.usersdb = self.db.users
 
-    async def connect(self) -> None:
-        """Check if we can connect to the database.
+        # 🆕 Collection for daily stats (/tdata)
+        self.statsdb = self.db.daily_stats
 
-        Raises:
-            SystemExit: If the connection to the database fails.
-        """
+    async def connect(self) -> None:
+        """Check if we can connect to the database."""
         try:
             start = time()
             await self.mongo.admin.command("ping")
@@ -334,6 +334,72 @@ class MongoDB:
             self.users.extend([user["_id"] async for user in self.usersdb.find()])
         return self.users
 
+    # ==========================================
+    # DAILY STATS LOGIC FOR /tdata (WITH AUTO-CLEAN)
+    # ==========================================
+    def get_today_date(self) -> str:
+        return datetime.now().strftime("%Y-%m-%d")
+
+    async def _check_and_reset_daily(self):
+        """
+        Check karega ki aaj ki date DB wali date se match karti hai ya nahi.
+        Agar date change ho gayi (agla din aa gaya), toh saare stats 0 kar dega.
+        """
+        today = self.get_today_date()
+        doc = await self.statsdb.find_one({"_id": "daily_stats"})
+        
+        # Agar document nahi hai, ya date kal ki/purani hai -> Reset to 0
+        if not doc or doc.get("date") != today:
+            await self.statsdb.update_one(
+                {"_id": "daily_stats"},
+                {"$set": {
+                    "date": today, 
+                    "new_users": 0, 
+                    "added": 0,     # Bot added to new groups
+                    "removed": 0    # Bot kicked/removed from groups
+                }},
+                upsert=True
+            )
+
+    # --- NEW USERS ---
+    async def update_today_new_user(self) -> None:
+        await self._check_and_reset_daily()
+        await self.statsdb.update_one(
+            {"_id": "daily_stats"},
+            {"$inc": {"new_users": 1}}
+        )
+
+    async def get_today_new_users_count(self) -> int:
+        await self._check_and_reset_daily()
+        doc = await self.statsdb.find_one({"_id": "daily_stats"})
+        return doc.get("new_users", 0) if doc else 0
+
+    # --- ADDED TO GROUPS ---
+    async def update_today_added(self) -> None:
+        await self._check_and_reset_daily()
+        await self.statsdb.update_one(
+            {"_id": "daily_stats"},
+            {"$inc": {"added": 1}}
+        )
+
+    async def get_today_added_count(self) -> int:
+        await self._check_and_reset_daily()
+        doc = await self.statsdb.find_one({"_id": "daily_stats"})
+        return doc.get("added", 0) if doc else 0
+
+    # --- REMOVED/KICKED FROM GROUPS ---
+    async def update_today_removed(self) -> None:
+        await self._check_and_reset_daily()
+        await self.statsdb.update_one(
+            {"_id": "daily_stats"},
+            {"$inc": {"removed": 1}}
+        )
+
+    async def get_today_removed_count(self) -> int:
+        await self._check_and_reset_daily()
+        doc = await self.statsdb.find_one({"_id": "daily_stats"})
+        return doc.get("removed", 0) if doc else 0
+    # ==========================================
 
     async def migrate_coll(self) -> None:
         from bson import ObjectId
