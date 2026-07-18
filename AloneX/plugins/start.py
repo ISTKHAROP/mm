@@ -4,10 +4,23 @@
 # DEVELOPER - THE SHIV
 
 import asyncio
+import random  # 🚀 NAYA: Random image aur sticker ke liye
+
 from pyrogram import enums, filters, types
 
 from AloneX import app, config, db, lang
 from AloneX.helpers import buttons, utils
+
+# 🚀 NAYA: Naye Stickers ki List
+STICKERS = [
+    "AAMCBQADGQEAASxz62pbDw4iDRt4AfTsAAGgnoEfDDkzAAM-EAACnEgIVkHCF2LF68deAQAHbQADPQQ",
+    "AAMCBQADGQEAASxz52pbDwABnTJPEaK_mxGvIN8SciVMGgACmQwAAouO8VdugNoY5z8GfwEAB20AAz0E",
+    "AAMCBQADGQEAASxz5WpbDvFMTwtjf2JocYiZQjkIzjBnAAKNDgACJgPwV20choJKYg2JAQAHbQADPQQ",
+    "AAMCBQADGQEAASxz42pbDu8okv_npcqkkUlMJPrBUaCUAALuDgACvvfxVx2lgi9Zv2fzAQAHbQADPQQ",
+    "AAMCBQADGQEAASxz4WpbDuhO3aBwTbo_OtVMetnnOu3XAAK7DwACpx3xV3aZbY4b0MSOAQAHbQADPQQ",
+    "AAMCBQADGQEAASxz32pbDuR_ZZwmCxDy32a6DwPd9MK1AAJhDgACRDH4V5CO65EaKsWTAQAHbQADPQQ",
+    "AAMCBAADGQEAASxtU2paSt1mI1tExMFU68VYyVyb7Ul2AAIEEgAC8AbZUV3poQnS2YVcAQAHbQADPQQ"
+]
 
 
 @app.on_message(filters.command(["help"]) & filters.private & ~app.bl_users)
@@ -30,8 +43,8 @@ async def start(_, message: types.Message):
 
     # --- LOADING ANIMATION SEQUENCE FOR PRIVATE CHAT ---
     if private:
-        # --- STICKER ADDED AT THE START ---
-        await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
+        # 🚀 FIX: Purana hata kar naya random sticker lagaya
+        await message.reply_sticker(random.choice(STICKERS))
         
         # API FloodWait se bachne aur animation fast karne ke liye steps optimize kiye hain
         baby = await message.reply_text("ᴅɪηɢ ᴅᴏηɢ.🥀")
@@ -58,8 +71,8 @@ async def start(_, message: types.Message):
     # --- HANDLE /start help ---
     if len(message.command) > 1 and message.command[1] == "help":
         if private:
-            # Sticker Before Image in /start help
-            await message.reply_sticker("CAACAgUAAxkBAAFJgZ1qBGwx9Z9vW5BhG3dw0l1A5j4CyQACXRYAAuc-wVWs4--9DGlDKzsE")
+            # 🚀 FIX: Yahan bhi random sticker lagaya
+            await message.reply_sticker(random.choice(STICKERS))
         return await _help(_, message)
 
     _text = (
@@ -70,9 +83,16 @@ async def start(_, message: types.Message):
 
     key = buttons.start_key(message.lang, private)
     
-    # FIX: Yahan START_IMG kar diya gaya hai logs ke hisaab se
+    # 🚀 FIX: Start command ke liye Random Image wala code
+    if hasattr(config, "START_IMG_URL") and isinstance(config.START_IMG_URL, list):
+        start_photo = random.choice(config.START_IMG_URL)
+    elif isinstance(config.START_IMG, list):
+        start_photo = random.choice(config.START_IMG)
+    else:
+        start_photo = config.START_IMG
+
     await message.reply_photo(
-        photo=config.START_IMG,
+        photo=start_photo,
         caption=_text,
         reply_markup=key,
         quote=not private
@@ -118,4 +138,4 @@ async def _new_member(_, message: types.Message):
                 return
             await utils.send_log(message, True)
             await db.add_chat(message.chat.id)
-            
+    
