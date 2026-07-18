@@ -11,15 +11,15 @@ from pyrogram import enums, filters, types
 from AloneX import app, config, db, lang
 from AloneX.helpers import buttons, utils
 
-# 🚀 NAYA: Naye Stickers ki List
+# 🚀 NAYA: Corrected Sticker IDs (Asli CAAC... wali IDs)
 STICKERS = [
-    "AAMCBQADGQEAASxz62pbDw4iDRt4AfTsAAGgnoEfDDkzAAM-EAACnEgIVkHCF2LF68deAQAHbQADPQQ",
-    "AAMCBQADGQEAASxz52pbDwABnTJPEaK_mxGvIN8SciVMGgACmQwAAouO8VdugNoY5z8GfwEAB20AAz0E",
-    "AAMCBQADGQEAASxz5WpbDvFMTwtjf2JocYiZQjkIzjBnAAKNDgACJgPwV20choJKYg2JAQAHbQADPQQ",
-    "AAMCBQADGQEAASxz42pbDu8okv_npcqkkUlMJPrBUaCUAALuDgACvvfxVx2lgi9Zv2fzAQAHbQADPQQ",
-    "AAMCBQADGQEAASxz4WpbDuhO3aBwTbo_OtVMetnnOu3XAAK7DwACpx3xV3aZbY4b0MSOAQAHbQADPQQ",
-    "AAMCBQADGQEAASxz32pbDuR_ZZwmCxDy32a6DwPd9MK1AAJhDgACRDH4V5CO65EaKsWTAQAHbQADPQQ",
-    "AAMCBAADGQEAASxtU2paSt1mI1tExMFU68VYyVyb7Ul2AAIEEgAC8AbZUV3poQnS2YVcAQAHbQADPQQ"
+    "CAACAgQAAxkBAAEsbVNqWkrdZiNbRMTBVOvFWMlcm-1JdgACBBIAAvAG2VFd6aEJ0tmFXD0E",
+    "CAACAgUAAxkBAAEsc99qWw7kf2WcJgsQ8t9mug8D3fTCtQACYQ4AAkQx-FeQjuuRGirFkz0E",
+    "CAACAgUAAxkBAAEsc-FqWw7oTt2gcE26PzrVTHrZ5zrt1wACuw8AAqcd8Vd2mW2OG9DEjj0E",
+    "CAACAgUAAxkBAAEsc-NqWw7vKJL_56XKpJFJTCT6wVGglAAC7g4AAr738VcdpYIvWb9n8z0E",
+    "CAACAgUAAxkBAAEsc-VqWw7xTE8LY39iaHGImUI5CM4wZwACjQ4AAiYD8FdtHIaCSmINiT0E",
+    "CAACAgUAAxkBAAEsc-dqWw8AAZ0yTxGiv5sRryDfEnIlTBoAApkMAAKLjvFXboDaGOc_Bn89BA",
+    "CAACAgUAAxkBAAEsc-tqWw8OIg0beAH07AABoJ6BHww5MwADPhAAApxICFZBwhdixevHXj0E"
 ]
 
 
@@ -43,8 +43,11 @@ async def start(_, message: types.Message):
 
     # --- LOADING ANIMATION SEQUENCE FOR PRIVATE CHAT ---
     if private:
-        # 🚀 FIX: Purana hata kar naya random sticker lagaya
-        await message.reply_sticker(random.choice(STICKERS))
+        # 🚀 FIX: Safety shield ke sath random sticker lagaya
+        try:
+            await message.reply_sticker(random.choice(STICKERS))
+        except Exception:
+            pass
         
         # API FloodWait se bachne aur animation fast karne ke liye steps optimize kiye hain
         baby = await message.reply_text("ᴅɪηɢ ᴅᴏηɢ.🥀")
@@ -71,8 +74,11 @@ async def start(_, message: types.Message):
     # --- HANDLE /start help ---
     if len(message.command) > 1 and message.command[1] == "help":
         if private:
-            # 🚀 FIX: Yahan bhi random sticker lagaya
-            await message.reply_sticker(random.choice(STICKERS))
+            # 🚀 FIX: Yahan bhi safety shield ke sath random sticker lagaya
+            try:
+                await message.reply_sticker(random.choice(STICKERS))
+            except Exception:
+                pass
         return await _help(_, message)
 
     _text = (
@@ -138,4 +144,4 @@ async def _new_member(_, message: types.Message):
                 return
             await utils.send_log(message, True)
             await db.add_chat(message.chat.id)
-    
+            
