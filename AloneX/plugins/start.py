@@ -4,7 +4,7 @@
 # DEVELOPER - THE SHIV
 
 import asyncio
-import random  # 🚀 NAYA: Random image aur sticker ke liye
+import random
 
 from pyrogram import enums, filters, types
 
@@ -49,7 +49,7 @@ async def start(_, message: types.Message):
         except Exception:
             pass
         
-        # API FloodWait se bachne aur animation fast karne ke liye steps optimize kiye hain
+        # API FloodWait se bachne aur animation fast karne ke liye
         baby = await message.reply_text("ᴅɪηɢ ᴅᴏηɢ.🥀")
         await asyncio.sleep(0.1)
         await baby.edit_text("ᴅɪηɢ ᴅᴏηɢ...🥀")
@@ -74,7 +74,6 @@ async def start(_, message: types.Message):
     # --- HANDLE /start help ---
     if len(message.command) > 1 and message.command[1] == "help":
         if private:
-            # 🚀 FIX: Yahan bhi safety shield ke sath random sticker lagaya
             try:
                 await message.reply_sticker(random.choice(STICKERS))
             except Exception:
@@ -104,16 +103,15 @@ async def start(_, message: types.Message):
         quote=not private
     )
 
+    # 🚀 NAYA FIX: Ab har baar logs aayenge (Naye aur Purane dono users ke)
     if private:
-        if await db.is_user(message.from_user.id):
-            return
-        await utils.send_log(message)
-        await db.add_user(message.from_user.id)
+        await utils.send_log(message)  # Hamesha log bhejega
+        if not await db.is_user(message.from_user.id):
+            await db.add_user(message.from_user.id)  # DB me sirf naye user ko daalega
     else:
-        if await db.is_chat(message.chat.id):
-            return
-        await utils.send_log(message, True)
-        await db.add_chat(message.chat.id)
+        await utils.send_log(message, True)  # Hamesha log bhejega
+        if not await db.is_chat(message.chat.id):
+            await db.add_chat(message.chat.id)
 
 
 @app.on_message(filters.command(["playmode", "settings"]) & filters.group & ~app.bl_users)
