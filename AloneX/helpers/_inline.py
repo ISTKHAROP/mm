@@ -9,17 +9,20 @@ from AloneX.core.lang import lang_codes
 # Safe fallback if PREMIUM_EMOJIS is not defined in config
 PREMIUM_EMOJIS = getattr(config, "PREMIUM_EMOJIS", None)
 
+
 def time_to_seconds(time_str: str) -> int:
-    """Helper function to convert time string to seconds"""
+    """Helper function to convert time string to seconds safely."""
     try:
-        parts = time_str.split(':')
+        if not isinstance(time_str, str):
+            return 0
+        parts = time_str.strip().split(':')
         if len(parts) == 3:
             return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
         elif len(parts) == 2:
             return int(parts[0]) * 60 + int(parts[1])
         elif len(parts) == 1:
             return int(parts[0])
-    except:
+    except Exception:
         return 0
     return 0
 
@@ -35,29 +38,33 @@ class Inline:
         random.shuffle(styles)
         return styles
 
-# 🎵 Custom Progress Bar Generator 
+    # 🎵 Custom Progress Bar Generator 
     def get_progress_bar(self, played_str: str, dur_str: str) -> str:
-        played_sec = time_to_seconds(str(played_str))
-        if str(dur_str).lower() in ["live", "unknown", "0", "00:00"]:
-            duration_sec = 0
-        else:
-            duration_sec = time_to_seconds(str(dur_str))
+        played_sec = time_to_seconds(played_str)
+        dur_str_lower = str(dur_str).lower().strip()
         
-        total_blocks = 10
-        if duration_sec > 0:
-            filled_blocks = int((played_sec / duration_sec) * total_blocks)
-        else:
-            filled_blocks = 0
+        if dur_str_lower in ["live", "unknown", "0", "00:00", "∞"]:
+            return "🎵▱▱▱▱▱▱▱▱▱"
             
-        filled_blocks = min(max(filled_blocks, 0), total_blocks)
+        duration_sec = time_to_seconds(dur_str)
+        if duration_sec == 0:
+            return "🎵▱▱▱▱▱▱▱▱▱"
+            
+        total_blocks = 10
+        
+        # Safe percentage calculation
+        percentage = (played_sec / duration_sec) * 100
+        percentage = max(0, min(100, percentage))  # Clamp between 0% and 100%
+        
+        filled_blocks = int((percentage / 100) * total_blocks)
         
         # Smooth progress bar with music note 🎵 leading the way
         if filled_blocks == 0:
             bar = "🎵" + "▱" * (total_blocks - 1)
-        elif filled_blocks == total_blocks:
+        elif filled_blocks >= total_blocks:
             bar = "▰" * (total_blocks - 1) + "🎵"
         else:
-            bar = "▰" * filled_blocks + "🎵" + "▱" * (total_blocks - filled_blocks - 1)
+            bar = ("▰" * filled_blocks) + "🎵" + ("▱" * (total_blocks - filled_blocks - 1))
             
         return bar
 
@@ -82,16 +89,16 @@ class Inline:
             )
         elif timer:
             try:
-                # Timer text ko parse karke apna custom bar inject kar rahe hain
-                times = re.findall(r'\d+:\d+(?::\d+)?', timer)
-                if len(times) == 2:
+                # Timer text parsing - fixed logic to fetch safe matches
+                times = re.findall(r'\d+:\d+(?::\d+)?', str(timer))
+                if len(times) >= 2:
                     played_str = times[0]
-                    dur_str = times[1]
+                    dur_str = times[-1] # Grabs the last match correctly
                     new_bar = self.get_progress_bar(played_str, dur_str)
                     timer = f"{played_str} {new_bar} {dur_str}"
-                elif len(times) == 1 and "live" in timer.lower():
+                elif len(times) == 1:
                     played_str = times[0]
-                    new_bar = self.get_progress_bar(played_str, "0")
+                    new_bar = self.get_progress_bar(played_str, "live")
                     timer = f"{played_str} {new_bar} ʟɪᴠᴇ"
             except Exception:
                 pass
@@ -311,5 +318,4 @@ class Inline:
                     self.ikb(text="ʏᴏᴜᴛᴜʙᴇ", url=link, style=style[0]),
                 ],
             ]
-                )
-        
+        )
